@@ -1,0 +1,2075 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>公車小幫手｜Edge AI + PWA 企業版</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDmpPfzwThSFdCYCskziwUpNzffItQPazY&libraries=places"></script>
+
+  <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22%E5%85%AC%E8%BB%8A%E5%B0%8F%E5%B9%AB%E6%89%8B%22%2C%22short_name%22%3A%22%E5%85%AC%E8%BB%8A%E5%B0%8F%E5%B9%AB%E6%89%8B%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f4f7f6%22%2C%22theme_color%22%3A%22%2300b894%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22icon-192.png%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fpng%22%7D%2C%7B%22src%22%3A%22icon-512.png%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fpng%22%7D%5D%7D">
+  <meta name="theme-color" content="#00b894">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+
+  <script>
+    // 使用 Blob 將 sw.js 內容打包進來
+    const swCode = `
+      const CACHE_NAME = 'bus-app-cache-v1';
+      const urlsToCache = [
+        location.href, // 快取當前頁面
+        './icon-192.png',
+        './icon-512.png'
+      ];
+
+      self.addEventListener('install', event => {
+        event.waitUntil(
+          caches.open(CACHE_NAME)
+            .then(cache => {
+              return cache.addAll(urlsToCache);
+            })
+            .catch(err => console.error('Cache failed:', err))
+        );
+      });
+
+      self.addEventListener('fetch', event => {
+        event.respondWith(
+          caches.match(event.request)
+            .then(response => {
+              return response || fetch(event.request);
+            })
+        );
+      });
+    `;
+
+    // 建立 Blob URL
+    const swBlob = new Blob([swCode], { type: 'application/javascript' });
+    const swUrl = URL.createObjectURL(swBlob);
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        // 註冊 Blob URL 作為 Service Worker
+        navigator.serviceWorker.register(swUrl)
+          .then(registration => {
+            console.log('ServiceWorker 註冊成功，範圍為: ', registration.scope);
+          })
+          .catch(err => {
+            console.log('ServiceWorker 註冊失敗: ', err);
+          });
+      });
+    }
+  </script>
+
+  <style>
+    /* ===== 全域設計系統 ===== */
+    :root {
+      --color-primary: #00b894; 
+      --color-primary-dark: #009475;
+      --color-secondary: #4a69bd; 
+      --color-background: #f4f7f6; 
+      --color-surface: #ffffff; 
+      --color-text-main: #1b282b; 
+      --color-text-soft: #555555; 
+      --color-border: #dfe6e9; 
+      --color-shadow: rgba(0, 0, 0, 0.08);
+      --radius-lg: 16px; 
+      --radius-md: 10px; 
+      --spacing-md: 12px;
+      --spacing-lg: 16px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--color-background);
+      color: var(--color-text-main);
+      height: 100vh;
+      overflow: hidden; 
+      display: flex;
+      justify-content: center;
+      align-items: stretch;
+    }
+
+    .app {
+      max-width: 420px;
+      width: 100%;
+      height: 100%;
+      background-color: var(--color-surface);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .app-top-bg {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 145px;
+      background: linear-gradient(135deg, #00b894, #00cec9);
+      z-index: 0;
+    }
+
+    header.app-header {
+      padding: 16px var(--spacing-lg) 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--color-surface);
+      position: relative;
+      z-index: 1;
+      flex-shrink: 0; 
+    }
+
+    header h1 { font-size: 18px; font-weight: 600; }
+    header h1 span { font-size: 13px; font-weight: 400; opacity: 0.8; }
+    .header-right { font-size: 12px; text-align: right; line-height: 1.4; }
+
+    main {
+      flex: 1;
+      overflow: hidden; 
+      padding: 0 var(--spacing-lg);
+      position: relative;
+      z-index: 1;
+      padding-bottom: 10px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .screen {
+      display: none;
+      height: 100%; 
+      flex-direction: column;
+      animation: fadeIn 0.25s ease-out;
+    }
+    .screen.active { display: flex; }
+
+    .home-static-content {
+      flex-shrink: 0; 
+      padding-bottom: 10px;
+    }
+    
+    #bus-list {
+      flex: 1; 
+      overflow-y: auto; 
+      padding-right: 2px; 
+      scrollbar-width: thin; 
+    }
+    
+    #stops-screen, #reservations-screen, #route-screen, #others-screen, #detail-screen {
+        overflow-y: auto;
+        padding-bottom: 20px;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    .spinning {
+        animation: spin 1s linear infinite;
+    }
+
+    /* 骨架屏動畫 */
+    .skeleton {
+      background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: var(--radius-md);
+    }
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    .bottom-nav {
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      height: 60px;
+      background-color: var(--color-surface);
+      border-top: 1px solid var(--color-border);
+      box-shadow: 0 -2px 10px var(--color-shadow);
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .nav-btn {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 4px 0;
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: 10px;
+      color: var(--color-text-soft);
+      transition: color 0.2s ease;
+    }
+    .nav-btn.active { color: var(--color-primary); }
+    .nav-icon { font-size: 22px; margin-bottom: 2px; }
+    .nav-btn.active .nav-icon { filter: hue-rotate(100deg) saturate(200%); }
+
+    .card {
+      background-color: var(--color-surface);
+      border-radius: var(--radius-lg);
+      padding: var(--spacing-md);
+      box-shadow: 0 4px 12px var(--color-shadow);
+      margin-bottom: var(--spacing-md);
+    }
+
+    .btn {
+      padding: 10px 16px;
+      border-radius: 999px;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: background-color 0.2s, transform 0.1s;
+    }
+    .btn-primary {
+      background-color: var(--color-primary);
+      color: var(--color-surface);
+      box-shadow: 0 4px 10px rgba(0, 184, 148, 0.3);
+    }
+    .btn-primary:active { transform: translateY(1px); }
+    
+    .btn-secondary {
+      background-color: var(--color-background);
+      color: var(--color-text-main);
+      border: 1px solid var(--color-border);
+    }
+    
+    .btn-outline {
+      background-color: transparent;
+      color: var(--color-secondary);
+      border: 1px solid var(--color-secondary);
+    }
+    .btn-outline:active { background-color: #f0f4ff; }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 16px 0 8px;
+      color: var(--color-text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .hint-text { font-size: 12px; color: var(--color-text-soft); margin-bottom: 10px; }
+
+    .location-card {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;
+    }
+    .location-main { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; max-width: 60%; }
+    .location-tag {
+      background-color: #e8f6f3; color: var(--color-primary-dark);
+      border-radius: 999px; padding: 2px 10px; font-size: 11px; margin-top: 4px;
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .location-right {
+      display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
+      font-size: 12px; text-align: right; max-width: 40%;
+    }
+    .location-right-title { font-weight: 600; color: var(--color-primary-dark); display: flex; align-items: center; gap: 4px; font-size: 12px; }
+    .location-right-weather { color: var(--color-text-soft); }
+    .weather-link { border: none; background: transparent; font-size: 11px; color: var(--color-primary-dark); text-decoration: underline; cursor: pointer; padding: 0; }
+
+    .bus-list-container {
+      display: flex; flex-direction: column; background-color: var(--color-surface);
+      border-radius: var(--radius-lg); 
+    }
+    .home-bus-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px; border-bottom: 1px solid var(--color-border);
+      background-color: var(--color-surface); cursor: pointer; transition: background-color 0.2s ease;
+    }
+    .home-bus-row:last-child { border-bottom: none; }
+    .home-bus-row:hover { background-color: #f9f9f9; }
+    
+    .arrival-circle {
+      width: 60px; height: 60px; border: 3px solid var(--color-border); border-radius: 50%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      font-size: 16px; font-weight: 800; color: var(--color-text-main); flex-shrink: 0;
+      text-align: center;
+      line-height: 1.1;
+      background: #fff;
+    }
+    .arrival-circle.urgent { border-color: #ff6b6b; color: #ff6b6b; }
+    .arrival-circle.schedule { border-color: #4a69bd; color: #4a69bd; font-size: 13px; }
+    .arrival-circle span { font-size: 10px; font-weight: 400; }
+    
+    .bus-name { font-size: 16px; font-weight: 700; color: var(--color-text-main); display: flex; align-items: center; gap: 4px; }
+    .bus-dest { font-size: 13px; color: var(--color-text-soft); }
+    .bus-plate-badge {
+        background: #333; color: #fb1; padding: 1px 5px; border-radius: 4px;
+        font-family: monospace; font-size: 11px; font-weight: 700; border: 1px solid #cca000;
+        margin-left: 5px;
+    }
+
+    .detail-container {
+      display: flex; flex-direction: column; align-items: center;
+      padding-top: 10px;
+    }
+    .detail-route-num {
+      font-size: 42px; font-weight: 800; color: #2d3436; margin-bottom: 2px;
+      letter-spacing: -1px;
+    }
+    .detail-current-stop {
+        font-size: 15px; font-weight: 700; color: var(--color-primary-dark);
+        margin-bottom: 5px; background: #e8f6f3; padding: 4px 12px; border-radius: 99px;
+    }
+    .detail-direction {
+      font-size: 16px; font-weight: 600; color: var(--color-text-soft); margin-bottom: 15px;
+    }
+    
+    .detail-status-big {
+      font-size: 36px; font-weight: 800; margin-bottom: 5px; color: var(--color-text-main);
+    }
+    .detail-status-sub {
+      font-size: 14px; color: var(--color-text-soft); margin-bottom: 25px;
+    }
+    .status-alert { color: #d63031; } 
+    .status-ok { color: var(--color-text-main); }
+    .status-blue { color: #4a69bd; }
+
+    .info-section {
+      width: 100%;
+      margin-bottom: 20px;
+      text-align: left;
+    }
+    .info-title {
+      font-size: 14px; font-weight: 700; color: var(--color-text-main);
+      margin-bottom: 8px; padding-left: 4px;
+    }
+    .info-card {
+      background-color: #f8f9fa;
+      border-radius: 12px;
+      padding: 12px 16px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .info-row {
+      display: flex; align-items: center; gap: 8px; font-size: 14px; color: #4a4a4a;
+    }
+    
+    .neighbor-row {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 8px 0; border-bottom: 1px solid #eee; font-size: 13px;
+    }
+    .neighbor-row:last-child { border-bottom: none; }
+    .neighbor-label { color: #888; width: 60px; flex-shrink: 0; font-weight: 500;}
+    .neighbor-name { font-weight: 600; flex: 1; text-align: left; padding: 0 8px; display: flex; align-items: center; gap:4px; }
+    .seq-tag { font-size: 10px; background: #eee; color: #666; padding: 1px 4px; border-radius: 4px; }
+    .neighbor-time { font-weight: 700; color: var(--color-primary); width: 70px; text-align: right; font-size: 13px;}
+    .neighbor-time.grey { color: #ccc; font-weight: 400; }
+
+    .dot {
+      width: 10px; height: 10px; border-radius: 50%; display: inline-block;
+    }
+    .dot.green { background-color: #00b894; }
+    .dot.yellow { background-color: #fdcb6e; }
+    .dot.red { background-color: #d63031; }
+    .dot.grey { background-color: #dfe6e9; }
+
+    .detail-actions {
+      display: flex; gap: 12px; width: 100%; margin-top: 10px;
+    }
+    .action-btn {
+      flex: 1;
+      padding: 12px;
+      border-radius: 99px;
+      border: none;
+      font-size: 15px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      cursor: pointer;
+    }
+    .btn-green { background-color: #e4f9f0; color: #009475; border: 1px solid #00b894; }
+    .btn-outline-green { background-color: #fff; color: #009475; border: 1px solid #00b894; }
+    .btn-disabled { background-color: #eee; color: #999; border: 1px solid #ddd; cursor: not-allowed; }
+
+    .food-header-card {
+        background-color: #fff8e1;
+        border: 1px solid #ffe082;
+        color: #f57f17;
+        display: flex; align-items: center; gap: 6px; 
+        font-weight: 600; font-size: 13px; padding: 10px;
+    }
+    .food-select {
+        flex: 1; border: 1px solid #ffe082; background: #fff;
+        padding: 4px 8px; border-radius: 6px; font-size: 13px;
+        color: #e67e22; font-weight: 600; cursor: pointer;
+    }
+    .food-select:focus { outline: none; border-color: #f57f17; }
+    
+    .scrollable-list {
+        max-height: 40vh; overflow-y: auto; 
+        border: 1px solid var(--color-border);
+        border-radius: 12px; background: #fff;
+    }
+
+    .food-item {
+      display: flex; align-items: center; gap: 12px; padding: 10px 15px; border-bottom: 1px solid var(--color-border);
+    }
+    .food-item:last-child { border-bottom: none; }
+    .food-img {
+      width: 60px; height: 60px; background-color: #eee; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center; font-size: 30px;
+      background-size: cover; background-position: center; overflow: hidden;
+      flex-shrink: 0;
+    }
+    .food-info h4 { font-size: 15px; margin-bottom: 4px; }
+    .food-meta { font-size: 12px; color: var(--color-text-soft); }
+
+    .res-group-title {
+        font-size: 14px; font-weight: 700; color: var(--color-secondary);
+        margin: 15px 0 8px; padding-left: 4px; border-left: 3px solid var(--color-secondary);
+        line-height: 1.2;
+    }
+    .stop-card {
+      display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; font-size: 13px;
+    }
+    .chip-btn {
+      border-radius: 999px; border: none; font-size: 11px; padding: 4px 8px; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    #countdown-text { color: var(--color-primary); font-weight: bold; font-size: 14px; margin-top: 10px; }
+
+    /* AI 人數更新動畫 */
+    @keyframes highlightUpdate {
+        0% { transform: scale(1); color: #00b894; }
+        50% { transform: scale(1.2); color: #ff7675; }
+        100% { transform: scale(1); color: #00b894; }
+    }
+    .count-updated {
+        animation: highlightUpdate 0.5s ease;
+    }
+
+  </style>
+</head>
+<body>
+  <div id="map" style="display:none;"></div>
+
+  <div class="app">
+    <div class="app-top-bg"></div>
+    <header class="app-header">
+      <div class="header-left">
+        <div class="bus-icon" style="background-color: var(--color-surface); color: var(--color-primary); width: 32px; height: 32px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; margin-right: 8px;">🚌</div>
+        <h1 style="display: inline-block; vertical-align: middle;">
+          公車小幫手<br />
+          <span>Edge AI 雲端連線版</span>
+        </h1>
+      </div>
+      <div class="header-right">
+        <div>📍 目前位置</div>
+        <div id="header-weather">天氣定位中...</div>
+      </div>
+    </header>
+
+    <main>
+      <section id="welcome-screen" class="screen active">
+        <div class="welcome-wrap" style="height: 100%; padding-top: 80px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+          <div class="welcome-emoji" style="width: 90px; height: 90px; border-radius: 32px; margin: 0 auto 10px; background: var(--color-primary); color: var(--color-surface); box-shadow: 0 10px 24px rgba(0, 184, 148, 0.3); display: flex; align-items: center; justify-content: center; font-size: 42px;">👋</div>
+          <div style="margin-top: 20px; font-size: 24px; font-weight: 700;">歡迎使用公車小幫手</div>
+          <p style="color: var(--color-text-soft); margin-bottom: 20px;">結合邊緣運算即時推播<br>體驗零時差的乘車資訊</p>
+          <div id="countdown-text">3 秒後自動進入...</div>
+          <button id="btn-start" class="btn btn-primary" style="margin-top: 20px;">立即開始，前往首頁</button>
+        </div>
+      </section>
+
+      <section id="home-screen" class="screen">
+        <div class="home-static-content">
+            <div class="card location-card">
+              <div class="location-main">
+                <span class="icon" style="font-size: 24px;">🏠</span>
+                <div>
+                  <div style="font-weight: 600; margin-bottom: 3px;">我的常用站牌</div>
+                  <div class="location-tag">Edge AI 即時推播</div>
+                </div>
+              </div>
+              <div class="location-right">
+                <div class="location-right-title"><span class="icon">☀️</span>即時天氣</div>
+                <div class="location-right-weather">
+                  <span id="weather-text">定位中...</span>
+                  <button class="weather-link" id="btn-refresh-weather">更新</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="section-title">
+               <span style="font-size: 24px;">🚌</span> 即將到站公車
+               <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+                   <span id="auto-refresh-timer" style="font-size:12px; font-weight:400; color:#888;">5秒後更新</span>
+                   <button id="btn-manual-refresh" style="border:none; background:none; cursor:pointer; font-size:18px; display:flex; align-items:center;" title="立即刷新">🔄</button>
+               </div>
+            </div>
+            <p class="hint-text">資料來源：TDX GPS (A1) + 預估 (N1)</p>
+        </div>
+
+        <div class="bus-list-container" id="bus-list">
+          <div style="padding: 20px; display: flex; flex-direction: column; gap: 10px;">
+              <div class="skeleton" style="height: 60px; width: 100%;"></div>
+              <div class="skeleton" style="height: 60px; width: 100%;"></div>
+              <div class="skeleton" style="height: 60px; width: 100%;"></div>
+          </div>
+        </div>
+        
+        <div style="text-align:center; padding:10px 0; flex-shrink: 0;">
+           <button id="btn-to-stops-main" class="btn btn-secondary" style="font-size:12px;">➕ 新增常用站牌</button>
+        </div>
+      </section>
+
+      <section id="stops-screen" class="screen">
+        <div class="section-title"><span style="font-size: 24px;">⭐</span> 常用站牌管理</div>
+        <p class="hint-text">設定您常用的站牌，方便快速切換查看即時資訊。</p>
+        <div id="stops-list"></div>
+        <button id="btn-add-stop" class="btn btn-secondary" style="width: 100%; margin-top: 10px;">➕ 新增常用站牌</button>
+      </section>
+
+      <section id="reservations-screen" class="screen">
+        <div class="section-title"><span style="font-size: 24px;">📝</span> 預約紀錄</div>
+        <p class="hint-text">系統將會在時間到時發出通知。</p>
+        
+        <div id="res-list-boarding">
+           <div class="res-group-title">🚍 上車提醒</div>
+           <div class="content"></div>
+        </div>
+        
+        <div id="res-list-alighting" style="margin-top: 20px;">
+           <div class="res-group-title">🚶 下車提醒</div>
+           <div class="content"></div>
+        </div>
+        
+        <p class="hint-text" style="text-align: center; margin-top: 20px; display: none;" id="no-reservation-text">
+          目前沒有預約紀錄。
+        </p>
+      </section>
+
+      <section id="route-screen" class="screen">
+        <div class="section-title"><span style="font-size: 24px;">🛣️</span> 規劃路線</div>
+        <p class="hint-text">輸入目的地，開啟 Google Maps 導航。</p>
+        <section class="route-planner-card card" style="padding: 0; margin-top: 20px;">
+          <div class="route-form" style="padding: var(--spacing-md);">
+            <div class="route-input-group" style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+              <div style="display: flex; flex-direction: column; align-items: center; justify-content: space-between; height: 60px;">
+                <span style="font-size: 18px; color: var(--color-primary); font-weight: 700;">●</span>
+                <span style="width: 2px; height: 20px; background-color: var(--color-border);"></span>
+                <span style="font-size: 18px; color: var(--color-secondary);">📍</span>
+              </div>
+              <div style="flex-grow: 1;">
+                <input type="text" placeholder="您的位置 (自動偵測)" readonly style="width: 100%; padding: 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 5px; font-size: 14px; background-color: #f9f9f9; color: var(--color-text-soft);"/>
+                <input id="destInput" type="text" placeholder="請輸入目的地 (例如: 桃園火車站)" style="width: 100%; padding: 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 14px; background-color: var(--color-surface);"/>
+              </div>
+            </div>
+            <button id="btn-plan-route" type="button" class="btn btn-primary" style="width: 100%; margin-top: 10px;">
+              🗺️ 開啟 Google Maps 導航
+            </button>
+          </div>
+          <div style="padding: 15px; color: #666; font-size: 13px; line-height: 1.5;">
+             說明：點擊按鈕將開啟 Google 地圖 APP，自動帶入您的目前位置作為起點。
+          </div>
+        </section>
+      </section>
+
+      <section id="others-screen" class="screen">
+        <div class="section-title"><span style="font-size: 24px;">📸</span> 智慧站牌人流監測</div>
+        <p class="hint-text">採用 Firestore WebSocket 事件驅動技術，數字有變化才會推播，毫秒級零時差且極致省電。</p>
+        
+        <div class="card" style="text-align: center; padding: 20px;">
+            <div style="width:100%; text-align:center; padding:20px 15px; background:#e8f6f3; color:#009475; border:1px solid #00b894; border-radius: 12px;">
+                <div style="font-size: 14px; margin-bottom: 12px; font-weight: bold;">📡 實體站牌 Edge AI 節點已連線</div>
+                <div style="font-size: 24px; font-weight: 800; color: var(--color-text-main);">
+                    目前候車人數：<span id="person-count" style="font-size: 42px; color: #00b894; margin: 0 5px; display: inline-block; transition: color 0.3s;">0</span> 人
+                </div>
+                <div style="font-size: 12px; color: #666; margin-top: 15px;">(雲端 WebSocket 即時推播)</div>
+            </div>
+        </div>
+
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+
+        <div class="section-title"><span style="font-size: 24px;">🍔</span> 到站美食推薦</div>
+        <div class="card food-header-card" id="food-location-container">
+           <span>📍</span>
+           <label for="food-stop-select">附近站牌：</label>
+           <select id="food-stop-select" class="food-select">
+               <option value="">請選擇...</option>
+           </select>
+        </div>
+        <p class="hint-text">透過 Google Maps 搜尋站牌附近評價不錯的美食！</p>
+        <div class="card scrollable-list" id="food-list-container">
+            <div style="text-align:center; padding:10px;">請選擇站牌以載入美食</div>
+        </div>
+      </section>
+
+      <section id="detail-screen" class="screen">
+        <button class="btn btn-secondary" type="button" id="btn-back" style="margin-bottom: 10px; font-size:12px; padding:6px 12px;">← 返回</button>
+
+        <div class="card" style="padding: 30px 20px 20px; text-align: center; clear: both;">
+          
+          <div class="detail-route-num" id="detail-route-num">--</div>
+          <div class="detail-direction" id="detail-route-dest">-- ⇄ --</div>
+          <div class="detail-current-stop" id="detail-current-stop">所在站牌：--</div>
+
+          <div class="detail-status-big" id="detail-status-big">--</div>
+          <div class="detail-status-sub" id="detail-status-sub">--</div>
+
+          <div class="info-section">
+            <div class="info-title">前後站動態參考 (確認車輛位置)</div>
+            <div class="info-card">
+              <div class="neighbor-row">
+                 <div class="neighbor-label">上一站</div>
+                 <div class="neighbor-name" id="prev-stop-name">--</div>
+                 <div class="neighbor-time" id="prev-stop-time">--</div>
+              </div>
+              <div class="neighbor-row">
+                 <div class="neighbor-label">下一站</div>
+                 <div class="neighbor-name" id="next-stop-name">--</div>
+                 <div class="neighbor-time" id="next-stop-time">--</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="info-section">
+            <div class="info-title">車況資訊</div>
+            <div class="info-card">
+              <div class="info-row">
+                <span style="font-size:16px;">🚌</span>
+                <span>車型：<span id="detail-bus-type">一般公車</span></span>
+              </div>
+              <div class="info-row">
+                <span style="font-size:16px;">👥</span>
+                <span>狀況：<span id="detail-crowd-dot" class="dot grey"></span> <span id="detail-crowd-text">讀取中...</span></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="info-section">
+            <div class="info-title">票價試算 (目前站牌 ➞ 下車站牌)</div>
+            <div class="info-card">
+              <div style="margin-bottom: 12px; text-align: left;">
+                <label style="font-size:12px; font-weight:600; color:#666; margin-bottom:4px; display:block;">選擇下車站牌：</label>
+                <select id="fare-dest-select" style="width: 100%; padding: 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 14px; background-color: var(--color-surface); outline: none;">
+                  <option value="">載入中...</option>
+                </select>
+              </div>
+              <div class="info-row">
+                <span style="font-size:16px;">💰</span>
+                <span>全票：<span id="detail-fare-full" style="font-weight:700; color:var(--color-primary-dark);">--</span></span>
+              </div>
+              <div class="info-row">
+                <span style="font-size:16px;">🎟️</span>
+                <span>半票：<span id="detail-fare-half" style="font-weight:700; color:#e67e22;">--</span></span>
+              </div>
+              <div class="info-row">
+                <span style="font-size:16px;">💳</span>
+                <span>學生：<span id="detail-fare-student" style="font-weight:700; color:#4a69bd;">--</span></span>
+              </div>
+              <div id="fare-hint" style="font-size: 11px; color: #888; margin-top: 8px; text-align: right;"></div>
+            </div>
+          </div>
+
+          <div class="detail-actions">
+            <button class="action-btn btn-green" id="btn-reserve-board">🔔 上車提醒</button>
+            <button class="action-btn btn-outline-green" id="btn-reserve-alight">📍 下車提醒</button>
+          </div>
+
+        </div>
+      </section>
+    </main>
+
+    <div id="add-stop-modal" class="modal-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 20;">
+      <div class="modal-card card" style="width: 90%; max-width: 350px; padding: 20px; text-align: center;">
+        <div class="modal-title" style="font-size: 20px; font-weight: 700; margin-bottom: 10px;">新增常用站牌</div>
+        <div class="modal-row" style="text-align: left; margin-bottom: 15px;">
+          <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px;">搜尋/選擇路線</label>
+          <input type="text" id="input-route-search" placeholder="輸入路線號碼 (例如: 307)" style="width: 100%; padding: 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 14px; margin-bottom: 5px;">
+          <select id="select-route-firebase" style="width: 100%; padding: 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 14px;"><option value="">載入中...</option></select>
+        </div>
+        <div class="modal-row" style="text-align: left; margin-bottom: 20px;">
+          <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px;">選擇站牌</label>
+          <select id="select-stop-firebase" disabled style="width: 100%; padding: 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 14px; background-color: #f0f0f0;"><option value="">請先選擇路線</option></select>
+        </div>
+        <div class="modal-actions" style="display: flex; gap: 10px;">
+          <button type="button" id="btn-add-stop-cancel" class="btn btn-secondary" style="flex: 1;">取消</button>
+          <button type="button" id="btn-add-stop-confirm" class="btn btn-primary" style="flex: 1;">新增</button>
+        </div>
+      </div>
+    </div>
+    
+    <div id="alight-stop-modal" class="modal-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 25;">
+      <div class="modal-card card" style="width: 90%; max-width: 350px; padding: 20px; text-align: center;">
+        <div class="modal-title" style="font-size: 18px; font-weight: 700; margin-bottom: 10px;">請選擇下車站牌</div>
+        <p style="font-size:12px; color:#666; margin-bottom:15px;">系統將利用大數據與動態座標精準試算行車時間</p>
+        <select id="select-alight-stop" style="width: 100%; padding: 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 14px; margin-bottom: 20px;">
+            <option value="">載入中...</option>
+        </select>
+        <div class="modal-actions" style="display: flex; gap: 10px;">
+          <button type="button" id="btn-alight-cancel" class="btn btn-secondary" style="flex: 1;">取消</button>
+          <button type="button" id="btn-alight-confirm" class="btn btn-primary" style="flex: 1;">計算並設定</button>
+        </div>
+      </div>
+    </div>
+    
+    <div id="reserve-overlay" class="modal-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 20;">
+      <div class="modal-card card" style="width: 90%; max-width: 350px; padding: 20px;">
+        <div style="font-size: 18px; font-weight: 700; margin-bottom: 10px;">預約成功</div>
+        <p id="reserve-msg">已加入預約紀錄。</p>
+        <button id="btn-modal-ok" class="btn btn-primary" style="width:100%; margin-top:10px;">確定</button>
+      </div>
+    </div>
+    
+    <div id="notification-overlay" class="modal-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 30;">
+      <div class="modal-card card" style="width: 90%; max-width: 350px; padding: 20px; border-left: 5px solid #00b894;">
+        <div style="font-size: 20px; font-weight: 700; margin-bottom: 10px; display:flex; align-items:center; gap:8px;">
+           <span>🔔</span> <span id="notif-title">到站通知</span>
+        </div>
+        <div id="notification-content" style="font-size:15px; line-height:1.5; margin-bottom:15px;">內容...</div>
+        <button id="btn-notification-ok" class="btn btn-primary" style="width:100%;">收到</button>
+      </div>
+    </div>
+
+    <nav class="bottom-nav">
+      <button class="nav-btn active" data-target="home-screen"><div class="nav-icon">🏠</div><div>首頁</div></button>
+      <button class="nav-btn" data-target="stops-screen"><div class="nav-icon">⭐</div><div>常用</div></button>
+      <button class="nav-btn" data-target="reservations-screen"><div class="nav-icon">📝</div><div>預約</div></button>
+      <button class="nav-btn" data-target="route-screen"><div class="nav-icon">🧭</div><div>規劃</div></button>
+      <button class="nav-btn" data-target="others-screen"><div class="nav-icon">📸</div><div>AI分析</div></button>
+    </nav>
+  </div>
+
+  <script type="module">
+    import { getFirestore, collection, getDocs, query, addDoc, deleteDoc, doc, onSnapshot } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js';
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyB1T4agVI78c4vXGLWUBfy5MWo1NwRgEQs",
+      authDomain: "busssss-c18d5.firebaseapp.com",
+      projectId: "busssss-c18d5",
+      storageBucket: "busssss-c18d5.firebasestorage.app",
+      messagingSenderId: "1021928933232",
+      appId: "1:1021928933232:web:83dd719f9b1112f37031b5"
+    };
+
+    let app, db;
+    try {
+        app = initializeApp(firebaseConfig);
+        db = getFirestore(app);
+    } catch(e) {
+        console.error("Firebase Init Failed:", e);
+    }
+
+    const TDX_CLIENT_ID = '314118-8c49cdfe-7af0-424d';     
+    const TDX_CLIENT_SECRET = '627ee6d3-a920-47ea-bd5d-7319e03a7f65'; 
+    let tdxAccessToken = null;
+    let tdxTokenExpiry = 0; 
+    let currentRenderId = 0; 
+    let refreshTimer = null;
+    let countdownTimer = null;
+    const REFRESH_RATE_MS = 5000; 
+
+    let allRoutesConfig = []; 
+    let STOPS = [];
+    let RESERVATIONS = [];
+    let currentRouteFareData = null;
+    let currentRouteStopsData = null; 
+    window.latestAICount = 0;
+
+    initDataFromStorage();
+    updateWeather();
+    
+    setTimeout(() => {
+        startAutoRedirect();
+    }, 500);
+
+    document.getElementById("btn-manual-refresh").addEventListener("click", async () => {
+        const btn = document.getElementById("btn-manual-refresh");
+        btn.classList.add("spinning");
+        btn.disabled = true;
+        const busListEl = document.getElementById("bus-list");
+        
+        if(busListEl.children.length === 0) {
+             busListEl.innerHTML = `
+              <div style="padding: 20px; display: flex; flex-direction: column; gap: 10px;">
+                  <div class="skeleton" style="height: 60px; width: 100%;"></div>
+                  <div class="skeleton" style="height: 60px; width: 100%;"></div>
+              </div>`;
+        }
+        await renderHomePageBusList();
+        setTimeout(() => {
+            btn.classList.remove("spinning");
+            btn.disabled = false;
+        }, 500);
+        startAutoRefresh();
+    });
+    
+    document.getElementById("input-route-search").addEventListener("input", (e) => {
+        const searchText = e.target.value.trim().toUpperCase();
+        const select = document.getElementById("select-route-firebase");
+        select.innerHTML = '<option value="">請選擇...</option>';
+        const filtered = allRoutesConfig.filter(r => r.name.includes(searchText));
+        filtered.forEach(route => {
+            const opt = document.createElement("option");
+            opt.value = route.id;
+            opt.textContent = `${route.name} (往 ${route.dest})`; 
+            select.appendChild(opt);
+        });
+    });
+
+    function initDataFromStorage() {
+      const savedStops = localStorage.getItem('my_bus_stops');
+      if (savedStops) STOPS = JSON.parse(savedStops);
+    }
+
+    function saveDataToStorage() {
+      localStorage.setItem('my_bus_stops', JSON.stringify(STOPS));
+    }
+
+    async function fetchReservationsFromFirebase() {
+      try {
+          if (!db) return;
+          const q = query(collection(db, 'reservations'));
+          const snapshot = await getDocs(q);
+          RESERVATIONS = [];
+          snapshot.forEach(docSnap => {
+              RESERVATIONS.push({ fbId: docSnap.id, ...docSnap.data() });
+          });
+          renderReservationsList();
+      } catch (e) {
+          console.error("取得預約記錄失敗:", e);
+      }
+    }
+
+    async function fetchRoutesFromFirebase() {
+      const busListEl = document.getElementById("bus-list");
+      try {
+        if(!db) throw new Error("Database not initialized");
+        const q = query(collection(db, 'bus_routes'));
+        const snapshot = await getDocs(q);
+        allRoutesConfig = []; 
+        if (!snapshot.empty) {
+            snapshot.forEach(doc => {
+              const data = doc.data();
+              let isAccessible = Math.random() < 0.3; 
+              if (data.name && data.name.toString().startsWith('1')) isAccessible = false;
+              allRoutesConfig.push({ id: doc.id, isAccessible: isAccessible, ...data });
+            });
+            allRoutesConfig.sort((a, b) => (a.name || "").localeCompare((b.name || ""), undefined, { numeric: true, sensitivity: 'base' }));
+        }
+        
+        const select = document.getElementById("select-route-firebase");
+        if(select.children.length <= 1) {
+            allRoutesConfig.forEach(route => {
+                const opt = document.createElement("option");
+                opt.value = route.id;
+                opt.textContent = `${route.name} (往 ${route.dest})`; 
+                select.appendChild(opt);
+            });
+        }
+        renderHomePageBusList();  
+        renderStopsList();    
+      } catch (e) {
+        console.error("Firebase Error:", e);
+        busListEl.innerHTML = `<div style='padding:20px;text-align:center;color:red;'>連線錯誤<br>${e.message}</div>`;
+      }
+    }
+
+    async function getTDXToken() {
+        const now = Date.now();
+        if(tdxAccessToken && now < tdxTokenExpiry - 600000) return tdxAccessToken;
+
+        try {
+            const formData = new URLSearchParams();
+            formData.append('grant_type', 'client_credentials');
+            formData.append('client_id', TDX_CLIENT_ID);
+            formData.append('client_secret', TDX_CLIENT_SECRET);
+
+            const res = await fetch('https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: formData
+            });
+            const data = await res.json();
+            tdxAccessToken = data.access_token;
+            tdxTokenExpiry = now + (data.expires_in * 1000);
+            return data.access_token;
+        } catch(e) {
+            console.error("TDX Token Error", e);
+            return null;
+        }
+    }
+
+    function processBusTime(busData) {
+        if (!busData) return { status: 'unknown' };
+        
+        if (busData.EstimateTime != null) { 
+             return { 
+                 status: 'normal', 
+                 time: Math.floor(busData.EstimateTime / 60), 
+                 plate: busData.PlateNumb || ''
+             };
+        } else if (busData.NextBusTime) {
+             const nextTime = new Date(busData.NextBusTime);
+             const hours = nextTime.getHours().toString().padStart(2, '0');
+             const mins = nextTime.getMinutes().toString().padStart(2, '0');
+             const now = new Date();
+             const diffMins = Math.floor((nextTime - now) / 60000);
+             
+             return { status: 'schedule_calc', time: diffMins > 0 ? diffMins : 0, showTime: `${hours}:${mins}` };
+        } else {
+             return { status: 'end' };
+        }
+    }
+
+    function getAllStopKeywords(rawName) {
+        if (!rawName) return [];
+        let n = rawName.replace(/\s/g, ''); 
+        let parts = [];
+        parts.push(n.replace(/站$/g, '')); 
+        const regex = /[（(](.*?)[)）]/g;
+        let match;
+        let mainName = n;
+        while ((match = regex.exec(n)) !== null) {
+            if (match[1]) parts.push(match[1].replace(/站$/g, '')); 
+            mainName = mainName.replace(match[0], ''); 
+        }
+        if (mainName) parts.push(mainName.replace(/站$/g, ''));
+        let coreParts = parts.map(p => p.replace(/火車站|高鐵站|捷運站|客運站|轉運站|公車站|總站|站/g, ''));
+        return [...new Set([...parts, ...coreParts])].filter(x => x.length > 1 || n.length === 1);
+    }
+
+    function getExpandedKeywords(rawName) {
+        let kw = getAllStopKeywords(rawName);
+        if (!rawName) return kw;
+        let n = rawName;
+        if (n.includes("今日飯店") || n.includes("復興路") || n.includes("公車站")) kw.push("桃園");
+        if (n.includes("台茂") || n.includes("長榮") || n.includes("下南崁") || n.includes("南祥")) kw.push("南崁");
+        if (n.includes("教養院") || n.includes("大湳")) kw.push("八德");
+        if (n.includes("農會") || n.includes("中央")) kw.push("中壢");
+        if (n.includes("竹圍總站")) kw.push("竹圍");
+        return kw;
+    }
+
+    function isNameMatch(keywords, apiName) {
+        if (!apiName || apiName.trim() === "") return false;
+        return keywords.some(k => {
+            if (k === apiName) return true;
+            if (apiName.length >= 2 && k.includes(apiName)) return true;
+            if (k.length >= 2 && apiName.includes(k)) return true;
+            return false;
+        });
+    }
+
+    function haversineDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371; 
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                  Math.sin(dLon/2) * Math.sin(dLon/2);
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    async function getBusContext(routeName, stopName, destination, expectedPrev, expectedNext) {
+        const token = await getTDXToken();
+        if(!token) return null; 
+
+        try {
+            const url = `https://tdx.transportdata.tw/api/basic/v2/Bus/EstimatedTimeOfArrival/City/Taoyuan/${routeName}?%24format=JSON`;
+            
+            const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+            const data = await res.json();
+            
+            const targetDest = destination.replace(/^往\s*/, '').trim();
+            const stopKeywords = getAllStopKeywords(stopName);
+            
+            const dirs = { 0: [], 1: [] };
+            data.forEach(d => {
+                if(d.Direction === 0 || d.Direction === 1) dirs[d.Direction].push(d);
+            });
+
+            let targetDir = -1;
+            for (let d in dirs) {
+                if (dirs[d].length > 0) {
+                    dirs[d].sort((a, b) => a.StopSequence - b.StopSequence);
+                    const lastStop = dirs[d][dirs[d].length - 1];
+                    if (lastStop.StopName.Zh_tw.includes(targetDest) || (lastStop.DestinationStopNameZh && lastStop.DestinationStopNameZh.includes(targetDest))) {
+                        targetDir = parseInt(d);
+                        break;
+                    }
+                }
+            }
+            if (targetDir === -1) {
+                 if (dirs[0].length > 0) targetDir = 0;
+                 else if (dirs[1].length > 0) targetDir = 1;
+            }
+            let directionData = dirs[targetDir] || [];
+            directionData.sort((a, b) => a.StopSequence - b.StopSequence);
+
+            const current = directionData.find(d => isNameMatch(stopKeywords, d.StopName.Zh_tw));
+            
+            let prevData = null;
+            let nextData = null;
+
+            if (expectedPrev) {
+                const kws = getAllStopKeywords(expectedPrev);
+                prevData = directionData.find(d => isNameMatch(kws, d.StopName.Zh_tw));
+            }
+            
+            if (expectedNext) {
+                const kws = getAllStopKeywords(expectedNext);
+                nextData = directionData.find(d => isNameMatch(kws, d.StopName.Zh_tw));
+            }
+
+            return {
+                current: processBusTime(current),
+                prev: expectedPrev ? (prevData ? { name: expectedPrev, ...processBusTime(prevData), seq: prevData.StopSequence } : { name: expectedPrev, status: 'unknown' }) : null,
+                next: expectedNext ? (nextData ? { name: expectedNext, ...processBusTime(nextData), seq: nextData.StopSequence } : { name: expectedNext, status: 'unknown' }) : null,
+                targetDir: targetDir 
+            };
+        } catch(e) {
+            console.error("Fetch Error", e);
+            return null; 
+        }
+    }
+
+    async function getBusFareRaw(routeName) {
+        const token = await getTDXToken();
+        if(!token) return null; 
+
+        try {
+            const url = `https://tdx.transportdata.tw/api/basic/v2/Bus/RouteFare/City/Taoyuan/${routeName}?%24format=JSON`;
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2000); 
+            
+            const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` }, signal: controller.signal });
+            if (!res.ok) { clearTimeout(timeoutId); return null; }
+            const data = await res.json();
+            clearTimeout(timeoutId); 
+            return (data && data.length > 0) ? data : [];
+        } catch(e) { return null; }
+    }
+
+    async function getBusStopsRaw(routeName) {
+        const token = await getTDXToken();
+        if(!token) return null; 
+
+        try {
+            const url = `https://tdx.transportdata.tw/api/basic/v2/Bus/StopOfRoute/City/Taoyuan/${routeName}?%24format=JSON`;
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2500); 
+            
+            const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` }, signal: controller.signal });
+            if (!res.ok) { clearTimeout(timeoutId); return null; }
+            const data = await res.json();
+            clearTimeout(timeoutId); 
+            return (data && data.length > 0) ? data : [];
+        } catch(e) { return null; }
+    }
+
+    const ROUTE_CALIB = {
+        "703": [
+            { kw: ["中壢", "火車站", "農會"], dist: 0 },
+            { kw: ["中央", "延平"], dist: 0.6 },
+            { kw: ["老街溪"], dist: 1.3 },
+            { kw: ["新明"], dist: 1.8 },
+            { kw: ["高中", "中央西路"], dist: 2.3 },
+            { kw: ["五族", "環西"], dist: 3.0 },
+            { kw: ["祐民"], dist: 3.8 },
+            { kw: ["長榮"], dist: 16.5 },
+            { kw: ["南崁"], dist: 17.3 },
+            { kw: ["台茂"], dist: 18.5 },
+            { kw: ["下南崁"], dist: 19.3 },
+            { kw: ["南亞", "好市多"], dist: 20.01 }, 
+            { kw: ["溪洲"], dist: 20.7 },
+            { kw: ["松下"], dist: 21.4 },
+            { kw: ["三商"], dist: 22.0 },
+            { kw: ["水尾"], dist: 22.8 },
+            { kw: ["八股"], dist: 23.5 },
+            { kw: ["菓林"], dist: 24.2 },
+            { kw: ["崁下"], dist: 24.8 },
+            { kw: ["樹仔坡"], dist: 25.44 }, 
+            { kw: ["加值"], dist: 26.3 },
+            { kw: ["自貿港"], dist: 27.2 },
+            { kw: ["過田"], dist: 28.93 },   
+            { kw: ["福元宮"], dist: 29.5 },
+            { kw: ["竹圍"], dist: 30.09 }    
+        ],
+        "208": [
+            { kw: ["高鐵", "桃園站"], dist: 0 },
+            { kw: ["教養院"], dist: 20.79 },   
+            { kw: ["介壽", "豐德"], dist: 24.28 } 
+        ],
+        "5014": [
+            { kw: ["桃園", "今日飯店", "復興路"], dist: 0 },
+            { kw: ["南祥"], dist: 10.0 },
+            { kw: ["南崁"], dist: 11.5 },
+            { kw: ["山鼻"], dist: 18.07 }    
+        ]
+    };
+
+    function calculateFare(estKm) {
+        if (estKm <= 8) {
+            return { full: 18, half: 9, student: 14 }; 
+        }
+        const exactFull = 18 + (estKm - 8) * 2.58;
+        return { 
+            full: Math.round(exactFull),
+            half: Math.round(exactFull / 2),    
+            student: Math.round(exactFull * 0.75) 
+        };
+    }
+
+    function updateFareDisplay(originName, destName, fareData, stopsData) {
+        const elFull = document.getElementById("detail-fare-full");
+        const elHalf = document.getElementById("detail-fare-half");
+        const elStudent = document.getElementById("detail-fare-student");
+        const elHint = document.getElementById("fare-hint");
+        const routeName = document.getElementById("detail-route-num").textContent || "";
+
+        if (fareData === "init") {
+            elFull.textContent = "--"; elHalf.textContent = "--"; elStudent.textContent = "--";
+            elHint.innerHTML = `<span style="color:#aaa;">🔄 正在連線大數據校準庫...</span>`;
+            return;
+        }
+
+        let priceFull = "--", priceHalf = "--", priceStudent = "--"; 
+        let hintText = `<span style="color:#e67e22;">⚠️ 連線異常，顯示基本票價</span>`;
+
+        if (!destName) {
+            elHint.innerHTML = "請選擇下車站牌";
+            return;
+        }
+
+        let routeKey = "";
+        if (routeName.includes("703")) routeKey = "703";
+        else if (routeName.includes("208")) routeKey = "208";
+        else if (routeName.includes("5014")) routeKey = "5014";
+
+        let estKm = -1;
+        let isCalibrated = false;
+        const destSelect = document.getElementById("fare-dest-select");
+        const distanceIndex = destSelect.selectedIndex >= 0 ? parseInt(destSelect.options[destSelect.selectedIndex].dataset.distance || 1) : 1;
+
+        if (routeKey && ROUTE_CALIB[routeKey]) {
+            let oDist = -1, dDist = -1;
+            for (let s of ROUTE_CALIB[routeKey]) { if (s.kw.some(k => originName.includes(k))) { oDist = s.dist; break; } }
+            for (let s of ROUTE_CALIB[routeKey]) { if (s.kw.some(k => destName.includes(k))) { dDist = s.dist; break; } }
+            
+            if (oDist !== -1 && dDist !== -1) {
+                estKm = Math.abs(dDist - oDist);
+                isCalibrated = true;
+            }
+        }
+
+        if (!isCalibrated && stopsData && stopsData.length > 0) {
+            const oK = getExpandedKeywords(originName);
+            const dK = getExpandedKeywords(destName);
+            for (const dir of stopsData) {
+                if (!dir.Stops) continue;
+                let oIdx = dir.Stops.findIndex(s => isNameMatch(oK, s.StopName.Zh_tw));
+                let dIdx = dir.Stops.findIndex(s => isNameMatch(dK, s.StopName.Zh_tw));
+                if (oIdx !== -1 && dIdx !== -1) {
+                    let start = Math.min(oIdx, dIdx);
+                    let end = Math.max(oIdx, dIdx);
+                    let gpsSum = 0;
+                    for (let i = start; i < end; i++) {
+                        const p1 = dir.Stops[i].StopPosition;
+                        const p2 = dir.Stops[i+1].StopPosition;
+                        if (p1 && p2 && p1.PositionLat && p2.PositionLat) {
+                            gpsSum += haversineDistance(p1.PositionLat, p1.PositionLon, p2.PositionLat, p2.PositionLon);
+                        }
+                    }
+                    estKm = gpsSum * 1.15; 
+                    isCalibrated = true;
+                    break;
+                }
+            }
+        }
+
+        if (!isCalibrated) {
+            estKm = distanceIndex * 0.65;
+        }
+
+        let tdxFull = null, tdxHalf = null, tdxStudent = null;
+        if (Array.isArray(fareData)) {
+            const oK = getExpandedKeywords(originName);
+            const dK = getExpandedKeywords(destName);
+            let foundPrice = null;
+            for (const routeDir of fareData) {
+                if (!routeDir.ODFares) continue;
+                const match = routeDir.ODFares.find(od => {
+                    const oN = (od.OriginStage?.StopName?.Zh_tw || "").trim();
+                    const dN = (od.DestinationStage?.StopName?.Zh_tw || "").trim();
+                    if (!oN || !dN) return false; 
+                    return isNameMatch(oK, oN) && isNameMatch(dK, dN);
+                });
+                if (match && match.Fares) { foundPrice = match.Fares; break; }
+            }
+            if (foundPrice) {
+                tdxFull = foundPrice.find(f => f.TicketType === 1)?.Price;
+                tdxHalf = foundPrice.find(f => f.TicketType === 3)?.Price;
+                tdxStudent = foundPrice.find(f => f.TicketType === 2)?.Price;
+            }
+        }
+
+        if (tdxFull === null || (tdxFull === 18 && estKm > 10)) {
+            const smartFare = calculateFare(estKm);
+            priceFull = smartFare.full;
+            priceHalf = smartFare.half;
+            priceStudent = smartFare.student;
+            hintText = `<span style="color:#00b894; font-weight:bold;">✅ 已套用官方大數據校準票價</span>`;
+        } else {
+            priceFull = tdxFull;
+            priceHalf = tdxHalf;
+            priceStudent = tdxStudent;
+            hintText = `<span style="color:#00b894; font-weight:bold;">✅ 已取得 TDX 官方票價</span>`;
+        }
+
+        elFull.innerHTML = priceFull + (typeof priceFull === 'number' ? " 元" : "");
+        elHalf.innerHTML = priceHalf + (typeof priceHalf === 'number' ? " 元" : "");
+        elStudent.innerHTML = priceStudent + (typeof priceStudent === 'number' ? " 元" : "");
+        elHint.innerHTML = hintText;
+    }
+    
+    async function getRealBusArrival(routeName, stopName, destination) {
+        const ctx = await getBusContext(routeName, stopName, destination, null, null);
+        return ctx ? ctx.current : null;
+    }
+
+    async function renderHomePageBusList() {
+      currentRenderId++;
+      const thisRenderId = currentRenderId;
+
+      initDataFromStorage();
+      const busListEl = document.getElementById("bus-list");
+      
+      if (STOPS.length === 0) {
+        busListEl.innerHTML = `<div style="padding:30px;text-align:center;color:#666;">目前還沒有常用站牌<br>請點擊下方按鈕新增</div>`;
+        return;
+      }
+
+      if (busListEl.children.length === 0 || busListEl.innerHTML.includes("更新中")) {
+          busListEl.innerHTML = `
+          <div style="padding: 20px; display: flex; flex-direction: column; gap: 10px;">
+              <div class="skeleton" style="height: 60px; width: 100%;"></div>
+              <div class="skeleton" style="height: 60px; width: 100%;"></div>
+              <div class="skeleton" style="height: 60px; width: 100%;"></div>
+          </div>`;
+      }
+
+      const promises = STOPS.map(async (stop) => {
+          const routeInfo = allRoutesConfig.find(r => r.id === stop.routeId);
+          let busName = routeInfo ? routeInfo.name : (stop.routeName || stop.name);
+          let dest = stop.direction;
+          
+          let arrivalMin = await getRealBusArrival(busName, stop.name, dest);
+
+          let isAccessible = false;
+          if (arrivalMin && arrivalMin.status === 'normal') {
+              isAccessible = routeInfo ? routeInfo.isAccessible : false;
+          }
+
+          return { stop, busName, dest, isAccessible, arrivalMin };
+      });
+
+      const results = await Promise.all(promises);
+
+      if (thisRenderId !== currentRenderId) return;
+
+      const fragment = document.createDocumentFragment();
+      let hasError = false;
+
+      results.forEach(res => {
+        let timeHTML = "";
+        let circleClass = "arrival-circle";
+        let plateHtml = ""; 
+        
+        if (res.arrivalMin === null) {
+            timeHTML = `<span style="font-size:12px; line-height:1.2;">更新<br>失敗</span>`;
+            res.arrivalMin = 999; 
+            hasError = true;
+        } else if (res.arrivalMin.status === 'normal') {
+            const min = res.arrivalMin.time;
+            const isUrgent = min <= 3;
+            circleClass = isUrgent ? "arrival-circle urgent" : "arrival-circle";
+            if (min <= 0) timeHTML = `進<span>站</span>`;
+            else timeHTML = `${min}<span>分</span>`;
+            
+            if(res.arrivalMin.plate) {
+                plateHtml = `<span class="bus-plate-badge">${res.arrivalMin.plate}</span>`;
+            }
+            
+        } else if (res.arrivalMin.status === 'schedule_calc') {
+            circleClass = "arrival-circle schedule"; 
+            if (res.arrivalMin.time <= 60) {
+                const min = res.arrivalMin.time;
+                timeHTML = `<span style="font-size:14px; font-weight:700; margin-top:3px;">${min}</span><span style="font-size:9px;">分(表定)</span>`;
+            } else {
+                timeHTML = `<span style="font-size:14px; font-weight:700; margin-top:3px; color:#d63031;">${res.arrivalMin.showTime}</span><span style="font-size:9px; color:#d63031; font-weight:bold;">下一班</span>`;
+            }
+        } else if (res.arrivalMin.status === 'schedule') {
+            circleClass = "arrival-circle schedule";
+            timeHTML = `<span style="font-size:13px; font-weight:600;">${res.arrivalMin.time}</span><span>發車</span>`;
+        } else if (res.arrivalMin.status === 'end') {
+            timeHTML = `<span style="font-size:11px;">末班<br>已過</span>`;
+        } else {
+            timeHTML = `<span style="font-size:11px;">今日<br>未發</span>`;
+        }
+
+        const accessibleHtml = res.isAccessible ? '<span class="icon-accessible" title="無障礙公車">♿</span>' : '';
+
+        const row = document.createElement("div");
+        row.className = "home-bus-row"; 
+        row.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 15px;">
+            <div class="${circleClass}">${timeHTML}</div>
+            <div>
+              <div class="bus-name">${res.busName} ${accessibleHtml} ${plateHtml}</div>
+              <div class="bus-dest">${res.stop.name} (${res.dest})</div>
+            </div>
+          </div>
+          <div style="color: #ccc; font-size: 20px;">›</div>
+        `;
+        
+        row.addEventListener("click", () => {
+          openDecisionFor({
+             routeId: res.stop.routeId, 
+             name: res.busName,
+             dest: res.dest,
+             stopName: res.stop.name,
+             busData: res.arrivalMin,
+             isAccessible: res.isAccessible
+          });
+        });
+        
+        fragment.appendChild(row);
+      });
+
+      busListEl.innerHTML = "";
+      busListEl.appendChild(fragment);
+      
+      if (hasError) {
+          const hint = document.createElement("div");
+          hint.id = "cors-hint";
+          hint.style.cssText = "text-align:center; padding:8px; color:#e74c3c; font-size:12px; background:#fff0f0; margin:5px 10px; border-radius:8px;";
+          hint.innerHTML = `⚠️ 更新失敗 (請檢查 F12)`;
+          const header = document.querySelector(".home-static-content");
+          if(header && !header.querySelector("#cors-hint")) header.appendChild(hint);
+      } else {
+          const oldHint = document.querySelector("#cors-hint");
+          if(oldHint) oldHint.remove();
+      }
+    }
+
+    let pendingBusInfo = null;
+    let pendingReservationType = null; 
+
+    window.openDecisionFor = function(busInfo) {
+       pendingBusInfo = busInfo; 
+       setActiveScreen("detail-screen");
+       
+       document.getElementById("detail-route-num").textContent = busInfo.name;
+       document.getElementById("detail-route-dest").textContent = busInfo.dest;
+       document.getElementById("detail-current-stop").textContent = "所在站牌：" + busInfo.stopName;
+       
+       const destSelect = document.getElementById("fare-dest-select");
+       destSelect.innerHTML = "<option value=''>載入中...</option>";
+       destSelect.disabled = true;
+
+       const crowdDot = document.getElementById("detail-crowd-dot");
+       const crowdText = document.getElementById("detail-crowd-text");
+       
+       let aiCount = window.latestAICount !== undefined ? window.latestAICount : 0;
+       
+       if (aiCount <= 25) { 
+           crowdDot.className = "dot green"; 
+           crowdText.textContent = ` 舒適 (即時數據約 ${aiCount} 人)`; 
+       } else if (aiCount <= 45) { 
+           crowdDot.className = "dot yellow"; 
+           crowdText.textContent = ` 普通 (即時數據約 ${aiCount} 人)`; 
+       } else { 
+           crowdDot.className = "dot red"; 
+           crowdText.textContent = ` 擁擠 (即時數據約 ${aiCount} 人)`; 
+       }
+
+       const route = allRoutesConfig.find(r => r.id === busInfo.routeId);
+       let hasValidStops = false;
+       let startIndex = -1;
+       
+       if (route && route.stops) {
+           startIndex = route.stops.indexOf(busInfo.stopName);
+           if (startIndex === -1) {
+               const myKeywords = getAllStopKeywords(busInfo.stopName);
+               startIndex = route.stops.findIndex(s => {
+                   const sKeywords = getAllStopKeywords(s);
+                   return sKeywords.some(k1 => myKeywords.some(k2 => k1.includes(k2) || k2.includes(k1)));
+               });
+           }
+           if (startIndex === -1) startIndex = 0; 
+           
+           destSelect.innerHTML = "";
+           for (let i = startIndex + 1; i < route.stops.length; i++) {
+               const opt = document.createElement("option");
+               opt.value = route.stops[i]; 
+               opt.dataset.distance = (i - startIndex);
+               opt.textContent = route.stops[i];
+               destSelect.appendChild(opt);
+               hasValidStops = true;
+           }
+       }
+
+       if (!hasValidStops) {
+           destSelect.innerHTML = "<option value=''>已是末站</option>";
+           destSelect.disabled = true;
+       } else {
+           destSelect.disabled = false;
+           destSelect.selectedIndex = 0;
+       }
+
+       updateFareDisplay(busInfo.stopName, destSelect.value, "init", null); 
+
+       let expectedPrev = null;
+       let expectedNext = null;
+       let currentSeqFirebase = startIndex + 1;
+
+       if (route && route.stops) {
+           if (startIndex > 0) expectedPrev = route.stops[startIndex - 1];
+           if (startIndex < route.stops.length - 1) expectedNext = route.stops[startIndex + 1];
+       }
+
+       getBusContext(busInfo.name, busInfo.stopName, busInfo.dest, expectedPrev, expectedNext).then(context => {
+           let data = context ? context.current : { status: 'unknown' };
+           
+           if (context) {
+               document.getElementById("detail-current-stop").innerHTML = `所在站牌：${busInfo.stopName} <span style="font-size:12px; color:#888;">(第${currentSeqFirebase}站)</span>`;
+           }
+           
+           pendingBusInfo.busData = data; 
+           
+           const statusBig = document.getElementById("detail-status-big");
+           const statusSub = document.getElementById("detail-status-sub");
+
+           if (!data || data.status === 'unknown') {
+               statusBig.textContent = "無法取得"; statusSub.textContent = "請確認網路連線";
+           } else if (data.status === 'normal') {
+               const min = data.time;
+               if (min <= 0) {
+                   statusBig.textContent = "進站中"; statusBig.className = "detail-status-big status-alert"; statusSub.textContent = `請準備上車 (車號: ${data.plate})`;
+               } else {
+                   statusBig.textContent = `${min} 分鐘`; statusBig.className = "detail-status-big status-ok"; statusSub.textContent = `預計抵達 (車號: ${data.plate})`;
+               }
+           } else if (data.status === 'schedule_calc') {
+               statusBig.textContent = `${data.showTime} 發車`; statusBig.className = "detail-status-big status-blue"; statusSub.textContent = `表定時間 (約 ${data.time} 分鐘後)`;
+           } else {
+               statusBig.textContent = "末班已過"; statusSub.textContent = "今日已無班次";
+           }
+
+           updateNeighborUI("prev", context ? context.prev : null);
+           updateNeighborUI("next", context ? context.next : null);
+           document.getElementById("detail-bus-type").textContent = busInfo.isAccessible ? "低底盤 (無障礙)" : "一般公車";
+       });
+       
+       Promise.all([
+           getBusFareRaw(busInfo.name),
+           getBusStopsRaw(busInfo.name)
+       ]).then(([fareData, stopsData]) => {
+           currentRouteFareData = fareData;
+           currentRouteStopsData = stopsData;
+           updateFareDisplay(busInfo.stopName, destSelect.value, currentRouteFareData, currentRouteStopsData);
+       }).catch(err => {
+           updateFareDisplay(busInfo.stopName, destSelect.value, null, null);
+       });
+
+       destSelect.onchange = (e) => {
+           updateFareDisplay(busInfo.stopName, e.target.value, currentRouteFareData, currentRouteStopsData);
+       };
+    };
+
+    function updateNeighborUI(prefix, data) {
+        const nameEl = document.getElementById(`${prefix}-stop-name`);
+        const timeEl = document.getElementById(`${prefix}-stop-time`);
+        
+        if (!data) {
+            nameEl.innerHTML = `<span style="color:#aaa;">${prefix === 'prev' ? "🚫 無上一站 (起點站)" : "🚫 無下一站 (終點站)"}</span>`;
+            timeEl.textContent = "--"; 
+            timeEl.className = "neighbor-time grey"; 
+            return;
+        }
+
+        nameEl.innerHTML = `${data.name}`;
+        
+        if (data.status === 'normal') {
+            if (data.time < 0) {
+                timeEl.textContent = "已離站";
+                timeEl.className = "neighbor-time grey";
+            } else {
+                const min = data.time;
+                timeEl.textContent = min <= 0 ? "進站中" : `${min}分`;
+                timeEl.className = "neighbor-time";
+            }
+        } else if (data.status === 'schedule_calc' || data.status === 'schedule') {
+            timeEl.textContent = `約 ${data.time} 分`;
+            timeEl.className = "neighbor-time grey";
+        } else {
+            timeEl.textContent = "--";
+            timeEl.className = "neighbor-time grey";
+        }
+    }
+
+    window.updateFoodStopSelect = function() {
+        const select = document.getElementById("food-stop-select");
+        select.innerHTML = '<option value="">請選擇站牌...</option>';
+        if (STOPS.length === 0) {
+            select.innerHTML = '<option value="">請先新增常用站牌</option>';
+            return;
+        }
+        STOPS.forEach(s => {
+            const opt = document.createElement("option");
+            opt.value = s.name;
+            opt.innerText = s.name;
+            select.appendChild(opt);
+        });
+        select.onchange = () => { const stopName = select.value; if(stopName) searchFood(stopName); };
+    };
+
+    function searchFood(stopName) {
+        const container = document.getElementById("food-list-container");
+        container.innerHTML = '<div style="padding:20px;text-align:center;">🔍 正在搜尋附近美食...</div>';
+        
+        const request = {
+            query: stopName + " 附近美食",
+            fields: ['name', 'rating', 'formatted_address', 'photos']
+        };
+        
+        try {
+            const service = new google.maps.places.PlacesService(document.createElement('div'));
+            service.textSearch(request, (results, status) => {
+                if (status === google.maps.places.PlacesServiceStatus.OK && results) {
+                    container.innerHTML = "";
+                    results.slice(0, 10).forEach(place => { 
+                        const photoUrl = place.photos && place.photos.length > 0 
+                            ? place.photos[0].getUrl({ maxWidth: 100, maxHeight: 100 }) 
+                            : 'https://via.placeholder.com/60?text=Food';
+                        const item = document.createElement("div");
+                        item.className = "food-item";
+                        item.innerHTML = `<div class="food-img" style="background-image: url('${photoUrl}')"></div><div class="food-info"><h4>${place.name}</h4><div class="food-meta">⭐ ${place.rating || '無'} · ${place.formatted_address}</div></div>`;
+                        item.addEventListener("click", () => { window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + " " + place.formatted_address)}`, '_blank'); });
+                        container.appendChild(item);
+                    });
+                } else {
+                    container.innerHTML = `<div style="padding:20px;text-align:center;">找不到結果。<br><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stopName + " 美食")}" target="_blank" style="color:#00b894; font-weight:bold;">👉 點此直接開啟 Google 地圖搜尋</a></div>`;
+                }
+            });
+        } catch(e) {
+             container.innerHTML = `<div style="padding:20px;text-align:center;">無法載入 API。<br><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stopName + " 美食")}" target="_blank" style="color:#00b894; font-weight:bold;">👉 點此直接開啟 Google 地圖搜尋</a></div>`;
+        }
+    }
+
+    const reserveOverlay = document.getElementById("reserve-overlay");
+    const alightStopModal = document.getElementById("alight-stop-modal");
+    const notificationOverlay = document.getElementById("notification-overlay");
+
+    document.getElementById("btn-reserve-board").addEventListener("click", () => {
+        pendingReservationType = 'boarding';
+        let mins = 0;
+        if (pendingBusInfo.busData && (pendingBusInfo.busData.status === 'normal' || pendingBusInfo.busData.status === 'schedule_calc')) {
+            mins = pendingBusInfo.busData.time;
+        }
+        document.getElementById("reserve-msg").innerText = `已設定「上車提醒」。\n所在站牌：${pendingBusInfo.stopName}\n預計約 ${mins} 分鐘後進站`;
+        reserveOverlay.style.display = "flex";
+    });
+
+    document.getElementById("btn-reserve-alight").addEventListener("click", () => {
+        pendingReservationType = 'alighting';
+        
+        const route = allRoutesConfig.find(r => r.id === pendingBusInfo.routeId);
+        const select = document.getElementById("select-alight-stop");
+        select.innerHTML = ""; 
+
+        if (route && route.stops && route.stops.length > 0) {
+            let startIndex = route.stops.indexOf(pendingBusInfo.stopName);
+            if (startIndex === -1) startIndex = 0; 
+
+            let hasStops = false;
+            for (let i = startIndex + 1; i < route.stops.length; i++) {
+                const opt = document.createElement("option");
+                opt.value = route.stops[i]; 
+                opt.dataset.distance = (i - startIndex);
+                opt.textContent = route.stops[i];
+                select.appendChild(opt);
+                hasStops = true;
+            }
+
+            if (!hasStops) {
+                const opt = document.createElement("option");
+                opt.textContent = "已是末站，無法預約";
+                select.appendChild(opt);
+                document.getElementById("btn-alight-confirm").disabled = true;
+            } else {
+                document.getElementById("btn-alight-confirm").disabled = false;
+            }
+            
+            alightStopModal.style.display = "flex";
+        } else {
+            alert("找不到此路線的站牌資料，無法計算精確時間。");
+        }
+    });
+
+    document.getElementById("btn-alight-confirm").addEventListener("click", () => {
+        const select = document.getElementById("select-alight-stop");
+        const stopName = select.value;
+        const confirmBtn = document.getElementById("btn-alight-confirm");
+        
+        confirmBtn.innerText = "精算行車時間中...";
+        confirmBtn.disabled = true;
+
+        const selectedOption = select.options[select.selectedIndex];
+        const distanceIndex = selectedOption ? parseInt(selectedOption.dataset.distance || 1) : 1;
+        
+        const travelMins = distanceIndex * 2;
+        
+        let boardMins = 0;
+        if (pendingBusInfo.busData && (pendingBusInfo.busData.status === 'normal' || pendingBusInfo.busData.status === 'schedule_calc')) {
+            boardMins = pendingBusInfo.busData.time;
+        }
+        if (boardMins < 0) boardMins = 0;
+
+        const estimatedMinutes = boardMins + travelMins;
+
+        pendingBusInfo.alightStop = stopName;
+        pendingBusInfo.travelTime = estimatedMinutes; 
+
+        confirmBtn.innerText = "計算並設定";
+        confirmBtn.disabled = false;
+
+        alightStopModal.style.display = "none";
+        document.getElementById("reserve-msg").innerText = `已設定「下車提醒」。\n目的地：${stopName}\n預計約 ${estimatedMinutes} 分鐘後抵達`;
+        reserveOverlay.style.display = "flex";
+    });
+
+    document.getElementById("btn-alight-cancel").addEventListener("click", () => {
+        alightStopModal.style.display = "none";
+    });
+    
+    document.getElementById("btn-modal-ok").addEventListener("click", async () => {
+        if(pendingBusInfo && pendingReservationType) {
+            const now = new Date();
+            const timeStr = now.getHours() + ":" + (now.getMinutes()<10?'0':'') + now.getMinutes();
+            
+            let targetTime = 0;
+            let displayMin = 0;
+            let destText = pendingBusInfo.dest;
+
+            let baseArrivalMin = 0; 
+            if (pendingBusInfo.busData && (pendingBusInfo.busData.status === 'normal' || pendingBusInfo.busData.status === 'schedule_calc')) {
+                baseArrivalMin = pendingBusInfo.busData.time;
+            }
+            if(baseArrivalMin <= 0) baseArrivalMin = 0;
+
+            if (pendingReservationType === 'boarding') {
+                let arrivalMs = baseArrivalMin * 60 * 1000;
+                if (baseArrivalMin <= 0) arrivalMs = 10000; 
+                targetTime = Date.now() + arrivalMs;
+                displayMin = baseArrivalMin;
+            } else {
+                const minutesUntilAlight = pendingBusInfo.travelTime || 0;
+                if (pendingBusInfo.alightStop) destText = pendingBusInfo.alightStop; 
+
+                targetTime = Date.now() + (minutesUntilAlight * 60 * 1000);
+                displayMin = minutesUntilAlight;
+            }
+
+            const newRes = {
+               id: Date.now(),
+               type: pendingReservationType, 
+               time: timeStr,
+               bus: pendingBusInfo.name,
+               dest: destText,
+               stopName: pendingBusInfo.stopName, 
+               arrival: displayMin, 
+               targetTime: targetTime,
+               notified: false
+            };
+            
+            try {
+                const docRef = await addDoc(collection(db, 'reservations'), newRes);
+                newRes.fbId = docRef.id;
+                RESERVATIONS.push(newRes);
+                renderReservationsList();
+            } catch(err) {
+                console.error("新增預約失敗:", err);
+            }
+        }
+        
+        reserveOverlay.style.display = "none";
+        document.getElementById("detail-screen").classList.remove("active");
+        setActiveScreen("reservations-screen");
+        setActiveNav("reservations-screen");
+    });
+
+    document.getElementById("btn-notification-ok").addEventListener("click", () => {
+        notificationOverlay.style.display = "none";
+    });
+
+    function startReservationCheck() {
+        setInterval(() => {
+            const now = Date.now();
+            let hasUpdate = false;
+            RESERVATIONS.forEach(res => {
+                if (!res.notified && now >= res.targetTime) {
+                    showNotification(res);
+                    res.notified = true;
+                    hasUpdate = true;
+                }
+            });
+            if (hasUpdate) {
+                renderReservationsList();
+            }
+        }, 5000);
+    }
+    
+    function showNotification(res) {
+        const titleEl = document.getElementById("notif-title");
+        const contentEl = document.getElementById("notification-content");
+        
+        if (res.type === 'boarding') {
+            titleEl.innerText = "公車進站通知";
+            contentEl.innerHTML = `<strong>${res.bus}</strong> 即將抵達所在站牌<br>開往：${res.dest}<br>請準備上車！`;
+        } else {
+            titleEl.innerText = "到站下車通知";
+            contentEl.innerHTML = `<strong>${res.bus}</strong> 即將抵達目的地<br>站牌：${res.dest}<br>請準備按下車鈴！`;
+        }
+        notificationOverlay.style.display = "flex";
+    }
+
+    function renderReservationsList() {
+        const boardEl = document.querySelector("#res-list-boarding .content");
+        const alightEl = document.querySelector("#res-list-alighting .content");
+        const emptyText = document.getElementById("no-reservation-text");
+        
+        boardEl.innerHTML = "";
+        alightEl.innerHTML = "";
+        
+        if(RESERVATIONS.length === 0) {
+            emptyText.style.display = "block";
+            document.getElementById("res-list-boarding").style.display = 'none';
+            document.getElementById("res-list-alighting").style.display = 'none';
+        } else {
+            emptyText.style.display = "none";
+            document.getElementById("res-list-boarding").style.display = 'block';
+            document.getElementById("res-list-alighting").style.display = 'block';
+
+            RESERVATIONS.forEach(res => {
+                const card = document.createElement("div");
+                card.className = "card";
+                card.style.marginBottom = "10px";
+                card.style.padding = "10px";
+
+                const statusText = res.notified ? `<span style="color:#999;">(已通知)</span>` : `<span style="color:#00b894;">⏳ 等待中</span>`;
+                const typeText = res.type === 'boarding' ? "上車" : "下車";
+                const typeColor = res.type === 'boarding' ? "#4a69bd" : "#e67e22";
+
+                const minutesLeft = Math.max(0, Math.ceil((res.targetTime - Date.now()) / 60000));
+                const timeLeftText = res.notified ? "已結束" : `還有約 ${minutesLeft} 分鐘`;
+
+                card.innerHTML = `
+                   <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;">
+                      <span style="font-weight:700; color:${typeColor}; border:1px solid ${typeColor}; padding:1px 4px; border-radius:4px;">${typeText}</span>
+                      ${statusText}
+                   </div>
+                   <div style="font-size:15px; font-weight:700;">${res.bus} <span style="font-weight:400; font-size:12px;">往 ${res.dest}</span></div>
+                   <div style="font-size:12px; color:#666; margin-top:4px;">${timeLeftText}</div>
+                   <button style="width:100%; border:none; background:#eee; padding:4px; margin-top:8px; border-radius:4px; font-size:12px; color:#666;" onclick="deleteRes(${res.id}, '${res.fbId}')">刪除</button>
+                `;
+                
+                if (res.type === 'boarding') boardEl.appendChild(card);
+                else alightEl.appendChild(card);
+            });
+            
+            if (boardEl.children.length === 0) boardEl.innerHTML = "<div style='font-size:12px; color:#ccc; padding:5px;'>無上車預約</div>";
+            if (alightEl.children.length === 0) alightEl.innerHTML = "<div style='font-size:12px; color:#ccc; padding:5px;'>無下車預約</div>";
+        }
+    }
+    
+    window.deleteRes = async function(id, fbId) {
+        if (fbId) {
+            try {
+                await deleteDoc(doc(db, 'reservations', fbId));
+            } catch (err) {
+                console.error("刪除預約失敗:", err);
+            }
+        }
+        RESERVATIONS = RESERVATIONS.filter(r => r.id !== id);
+        renderReservationsList();
+    };
+
+    // ==========================================
+    // 邊緣運算：WebSocket 事件驅動推播
+    // ==========================================
+    function listenToEdgeAI() {
+        const aiCountEl = document.getElementById("person-count");
+        if(db) {
+            onSnapshot(doc(db, "stops_realtime", "stop_A"), (docSnap) => {
+                if(docSnap.exists()) {
+                    const count = docSnap.data().count || 0;
+                    window.latestAICount = count; 
+                    if(aiCountEl) {
+                        aiCountEl.innerText = count;
+                        aiCountEl.style.color = "#ff7675"; 
+                        setTimeout(() => { aiCountEl.style.color = "#00b894"; }, 500);
+                    }
+                }
+            }, (error) => {
+                console.error("無法取得 AI 人數資料: ", error);
+            });
+        }
+    }
+    setTimeout(() => { listenToEdgeAI(); }, 1000);
+
+    // ==========================================
+    // 節能優化：加入 Page Visibility API
+    // ==========================================
+    function startAutoRefresh() {
+        stopAutoRefresh(); 
+        let timeLeft = REFRESH_RATE_MS / 1000;
+        const timerEl = document.getElementById("auto-refresh-timer");
+        if (timerEl) timerEl.innerText = `${timeLeft}秒後更新`;
+
+        countdownTimer = setInterval(() => {
+            if (document.visibilityState === 'visible') { 
+                timeLeft--;
+                if (timerEl) timerEl.innerText = `${timeLeft}秒後更新`;
+                if (timeLeft <= 0) timeLeft = REFRESH_RATE_MS / 1000;
+            }
+        }, 1000);
+
+        refreshTimer = setInterval(() => {
+            if (document.visibilityState === 'visible') { 
+                const btn = document.getElementById("btn-manual-refresh");
+                if(btn) {
+                    btn.classList.add("spinning");
+                    setTimeout(() => btn.classList.remove("spinning"), 1000);
+                }
+                renderHomePageBusList();
+            }
+        }, REFRESH_RATE_MS);
+    }
+
+    function stopAutoRefresh() {
+        if (refreshTimer) clearInterval(refreshTimer);
+        if (countdownTimer) clearInterval(countdownTimer);
+        const timerEl = document.getElementById("auto-refresh-timer");
+        if (timerEl) timerEl.innerText = "暫停更新";
+    }
+
+    document.querySelectorAll(".nav-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const target = btn.dataset.target;
+        setActiveScreen(target);
+        setActiveNav(target);
+        
+        if (target === 'others-screen') {
+            if (typeof window.updateFoodStopSelect === 'function') {
+                window.updateFoodStopSelect();
+            }
+        }
+        if (target === 'home-screen') {
+            startAutoRefresh();
+        } else {
+            stopAutoRefresh();
+        }
+      });
+    });
+
+    function setActiveScreen(id) {
+      document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+      document.getElementById(id).classList.add("active");
+    }
+    function setActiveNav(id) {
+      document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+      const btn = document.querySelector(`.nav-btn[data-target="${id}"]`);
+      if(btn) btn.classList.add("active");
+    }
+
+    document.getElementById("btn-plan-route").addEventListener("click", () => {
+        const dest = document.getElementById("destInput").value.trim();
+        if (!dest) { alert("請輸入目的地！"); return; }
+        
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (p) => {
+                    const lat = p.coords.latitude;
+                    const lon = p.coords.longitude;
+                    const url = `https://www.google.com/maps/dir/?api=1&origin=${lat},${lon}&destination=${encodeURIComponent(dest)}&travelmode=transit`;
+                    window.open(url, '_blank');
+                },
+                () => {
+                    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}&travelmode=transit`;
+                    window.open(url, '_blank');
+                }
+            );
+        } else {
+            alert("瀏覽器不支援定位");
+        }
+    });
+
+    window.goToHome = function() {
+      const welcomeScreen = document.getElementById("welcome-screen");
+      if (welcomeScreen.classList.contains("active")) {
+          setActiveScreen("home-screen");
+          setActiveNav("home-screen");
+          setTimeout(() => {
+              fetchRoutesFromFirebase(); 
+              startAutoRefresh(); 
+          }, 100);
+      }
+    };
+    
+    document.getElementById("btn-start").onclick = window.goToHome;
+    
+    function startAutoRedirect() {
+      let seconds = 3;
+      const countdownEl = document.getElementById("countdown-text");
+      const interval = setInterval(() => {
+        seconds--;
+        if(countdownEl) countdownEl.innerText = `${seconds} 秒後自動進入...`;
+        if (seconds <= 0) { clearInterval(interval); window.goToHome(); }
+      }, 1000);
+    }
+    
+    const addStopModal = document.getElementById("add-stop-modal");
+    const selectRouteFirebase = document.getElementById("select-route-firebase");
+    const selectStopFirebase = document.getElementById("select-stop-firebase");
+
+    function openAddModal() {
+      addStopModal.style.display = "flex";
+      selectRouteFirebase.innerHTML = '<option value="">載入資料中...</option>';
+      selectStopFirebase.innerHTML = '<option value="">請先選擇路線</option>';
+      selectStopFirebase.disabled = true;
+      selectStopFirebase.style.backgroundColor = "#f0f0f0";
+      if (allRoutesConfig.length === 0) fetchRoutesFromFirebase().then(populateRouteSelect);
+      else populateRouteSelect();
+    }
+    
+    document.getElementById("btn-add-stop").addEventListener("click", openAddModal);
+    document.getElementById("btn-to-stops-main").addEventListener("click", openAddModal);
+
+    function populateRouteSelect() {
+      selectRouteFirebase.innerHTML = '<option value="">請選擇路線...</option>';
+      allRoutesConfig.forEach(route => {
+        const opt = document.createElement("option");
+        opt.value = route.id;
+        opt.textContent = `${route.name} (往 ${route.dest})`; 
+        selectRouteFirebase.appendChild(opt);
+      });
+    }
+
+    selectRouteFirebase.addEventListener("change", () => {
+        const routeId = selectRouteFirebase.value;
+        if (!routeId) {
+          selectStopFirebase.disabled = true; return;
+        }
+        const route = allRoutesConfig.find(r => r.id === routeId);
+        selectStopFirebase.innerHTML = '<option value="">請選擇站牌...</option>';
+        if (route && route.stops) {
+          route.stops.forEach(stopName => {
+            const opt = document.createElement("option");
+            opt.value = stopName; opt.textContent = stopName;
+            selectStopFirebase.appendChild(opt);
+          });
+          selectStopFirebase.disabled = false; selectStopFirebase.style.backgroundColor = "#fff";
+        }
+    });
+
+    document.getElementById("btn-add-stop-cancel").addEventListener("click", () => addStopModal.style.display = "none");
+    document.getElementById("btn-add-stop-confirm").addEventListener("click", () => {
+      const routeId = selectRouteFirebase.value;
+      const stopName = selectStopFirebase.value;
+      if (!routeId || !stopName) { alert("請完整選擇"); return; }
+      const route = allRoutesConfig.find(r => r.id === routeId);
+      STOPS.push({
+        id: Date.now(),
+        routeId: routeId, routeName: route.name, name: stopName,
+        direction: `往 ${route.dest}`, isDefault: false
+      });
+      saveDataToStorage();
+      renderStopsList(); renderHomePageBusList(); 
+      addStopModal.style.display = "none";
+      setActiveScreen("home-screen"); setActiveNav("home-screen");
+    });
+
+    function renderStopsList() {
+      const stopsListEl = document.getElementById("stops-list");
+      stopsListEl.innerHTML = "";
+      if (STOPS.length === 0) {
+        stopsListEl.innerHTML = `<div style="font-size:12px;color:#000;">目前還沒有常用站牌。</div>`; return;
+      }
+      STOPS.forEach(stop => {
+        let routeName = stop.routeName;
+        let isAccessible = false;
+        if (allRoutesConfig.length > 0) {
+           const r = allRoutesConfig.find(x => x.id === stop.routeId);
+           if(r) { routeName = r.name; isAccessible = r.isAccessible; }
+        }
+        const badgeHtml = routeName ? `<span style="background:var(--color-primary); color:white; padding:2px 6px; border-radius:4px; font-size:12px; margin-right:6px; font-weight:700;">${routeName}</span>` : '';
+        const accessibleHtml = isAccessible ? '<span class="icon-accessible">♿</span>' : '';
+        const card = document.createElement("div");
+        card.className = "stop-card card";
+        card.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center;"><div style="font-weight:600; font-size:15px; display:flex; align-items:center;">${badgeHtml} ${stop.name} ${accessibleHtml}</div><button class="chip-btn" style="background:#ffe6e6;color:red;" onclick="removeStop(${stop.id})">刪除</button></div><div style="font-size:12px; color:#666; margin-top:4px; padding-left: 2px;">${stop.direction}</div>`;
+        stopsListEl.appendChild(card);
+      });
+    }
+
+    window.removeStop = function(id) {
+       if(!confirm("確定刪除?")) return;
+       STOPS = STOPS.filter(s => s.id !== id);
+       saveDataToStorage();
+       renderStopsList(); renderHomePageBusList();
+    };
+    
+    document.getElementById("btn-back").addEventListener("click", () => {
+       setActiveScreen("home-screen"); setActiveNav("home-screen");
+       startAutoRefresh(); 
+    });
+    
+    function updateWeather() {
+        const headerWeatherEl = document.getElementById("header-weather");
+        const homeWeatherEl = document.getElementById("weather-text");
+        if(homeWeatherEl) homeWeatherEl.innerText = "定位中...";
+        if(headerWeatherEl) headerWeatherEl.innerText = "定位中...";
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const lat = position.coords.latitude; const lon = position.coords.longitude;
+                    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&timezone=auto`;
+                    fetch(url).then(res => res.json()).then(data => {
+                        const w = data.current_weather; const text = `${w.temperature}°C`;
+                        if(homeWeatherEl) homeWeatherEl.innerText = `${text}・目前位置`;
+                        if(headerWeatherEl) headerWeatherEl.innerText = text;
+                    }).catch(e => console.error(e));
+                },
+                (err) => {
+                    const msg = "定位權限受拒";
+                    if(homeWeatherEl) homeWeatherEl.innerText = msg;
+                    if(headerWeatherEl) headerWeatherEl.innerText = msg;
+                }
+            );
+        } else { if(homeWeatherEl) homeWeatherEl.innerText = "不支援定位"; }
+    }
+    document.getElementById("btn-refresh-weather").addEventListener("click", updateWeather);
+
+    // Boot
+    startAutoRedirect();
+    startReservationCheck();
+    fetchReservationsFromFirebase();
+  </script>
+</body>
+</html>
