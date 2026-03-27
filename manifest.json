@@ -1,7 +1,7 @@
 {
   "name": "公車小幫手",
   "short_name": "公車小幫手",
-  "start_url": "./3.html",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#f4f7f6",
   "theme_color": "#00b894",
