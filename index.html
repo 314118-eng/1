@@ -7,48 +7,14 @@
   
   <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDmpPfzwThSFdCYCskziwUpNzffItQPazY&libraries=places"></script>
 
-  <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22%E5%85%AC%E8%BB%8A%E5%B0%8F%E5%B9%AB%E6%89%8B%22%2C%22short_name%22%3A%22%E5%85%AC%E8%BB%8A%E5%B0%8F%E5%B9%AB%E6%89%8B%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f4f7f6%22%2C%22theme_color%22%3A%22%2300b894%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22icon-192.png%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fpng%22%7D%2C%7B%22src%22%3A%22icon-512.png%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fpng%22%7D%5D%7D">
+  <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#00b894">
   <link rel="apple-touch-icon" href="./icon-192.png">
 
   <script>
-    // 使用 Blob 將 sw.js 內容打包進來
-    const swCode = `
-      const CACHE_NAME = 'bus-app-cache-v1';
-      const urlsToCache = [
-        location.href, // 快取當前頁面
-        './icon-192.png',
-        './icon-512.png'
-      ];
-
-      self.addEventListener('install', event => {
-        event.waitUntil(
-          caches.open(CACHE_NAME)
-            .then(cache => {
-              return cache.addAll(urlsToCache);
-            })
-            .catch(err => console.error('Cache failed:', err))
-        );
-      });
-
-      self.addEventListener('fetch', event => {
-        event.respondWith(
-          caches.match(event.request)
-            .then(response => {
-              return response || fetch(event.request);
-            })
-        );
-      });
-    `;
-
-    // 建立 Blob URL
-    const swBlob = new Blob([swCode], { type: 'application/javascript' });
-    const swUrl = URL.createObjectURL(swBlob);
-
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        // 註冊 Blob URL 作為 Service Worker
-        navigator.serviceWorker.register(swUrl)
+        navigator.serviceWorker.register('./sw.js')
           .then(registration => {
             console.log('ServiceWorker 註冊成功，範圍為: ', registration.scope);
           })
@@ -411,15 +377,16 @@
     .food-select:focus { outline: none; border-color: #f57f17; }
     
     .scrollable-list {
-        max-height: 40vh; overflow-y: auto; 
+        overflow-y: auto; 
         border: 1px solid var(--color-border);
         border-radius: 12px; background: #fff;
     }
 
     .food-item {
-      display: flex; align-items: center; gap: 12px; padding: 10px 15px; border-bottom: 1px solid var(--color-border);
+      display: flex; align-items: center; gap: 12px; padding: 10px 15px; border-bottom: 1px solid var(--color-border); cursor: pointer; transition: background 0.2s;
     }
     .food-item:last-child { border-bottom: none; }
+    .food-item:hover { background: #f9f9f9; }
     .food-img {
       width: 60px; height: 60px; background-color: #eee; border-radius: 8px;
       display: flex; align-items: center; justify-content: center; font-size: 30px;
@@ -445,12 +412,13 @@
 
     /* AI 人數更新動畫 */
     @keyframes highlightUpdate {
-        0% { transform: scale(1); color: #00b894; }
-        50% { transform: scale(1.2); color: #ff7675; }
-        100% { transform: scale(1); color: #00b894; }
+        0% { color: #00b894; }
+        50% { color: #ff7675; transform: scale(1.05); }
+        100% { color: var(--color-text-main); }
     }
     .count-updated {
         animation: highlightUpdate 0.5s ease;
+        display: inline-block;
     }
 
   </style>
@@ -465,7 +433,7 @@
         <div class="bus-icon" style="background-color: var(--color-surface); color: var(--color-primary); width: 32px; height: 32px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; margin-right: 8px;">🚌</div>
         <h1 style="display: inline-block; vertical-align: middle;">
           公車小幫手<br />
-          <span>Edge AI 雲端連線版</span>
+          <span>智慧公車聯網系統</span>
         </h1>
       </div>
       <div class="header-right">
@@ -479,7 +447,7 @@
         <div class="welcome-wrap" style="height: 100%; padding-top: 80px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
           <div class="welcome-emoji" style="width: 90px; height: 90px; border-radius: 32px; margin: 0 auto 10px; background: var(--color-primary); color: var(--color-surface); box-shadow: 0 10px 24px rgba(0, 184, 148, 0.3); display: flex; align-items: center; justify-content: center; font-size: 42px;">👋</div>
           <div style="margin-top: 20px; font-size: 24px; font-weight: 700;">歡迎使用公車小幫手</div>
-          <p style="color: var(--color-text-soft); margin-bottom: 20px;">結合邊緣運算即時推播<br>體驗零時差的乘車資訊</p>
+          <p style="color: var(--color-text-soft); margin-bottom: 20px;">結合大數據與 PWA<br>體驗零時差的乘車資訊</p>
           <div id="countdown-text">3 秒後自動進入...</div>
           <button id="btn-start" class="btn btn-primary" style="margin-top: 20px;">立即開始，前往首頁</button>
         </div>
@@ -492,7 +460,7 @@
                 <span class="icon" style="font-size: 24px;">🏠</span>
                 <div>
                   <div style="font-weight: 600; margin-bottom: 3px;">我的常用站牌</div>
-                  <div class="location-tag">Edge AI 即時推播</div>
+                  <div class="location-tag">即時雲端連線</div>
                 </div>
               </div>
               <div class="location-right">
@@ -555,7 +523,7 @@
 
       <section id="route-screen" class="screen">
         <div class="section-title"><span style="font-size: 24px;">🛣️</span> 規劃路線</div>
-        <p class="hint-text">輸入目的地，開啟 Google Maps 導航。</p>
+        <p class="hint-text">輸入目的地，無縫開啟 Google Maps 導航。</p>
         <section class="route-planner-card card" style="padding: 0; margin-top: 20px;">
           <div class="route-form" style="padding: var(--spacing-md);">
             <div class="route-input-group" style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
@@ -570,42 +538,29 @@
               </div>
             </div>
             <button id="btn-plan-route" type="button" class="btn btn-primary" style="width: 100%; margin-top: 10px;">
-              🗺️ 開啟 Google Maps 導航
+              🗺️ 開啟地圖導航
             </button>
           </div>
           <div style="padding: 15px; color: #666; font-size: 13px; line-height: 1.5;">
-             說明：點擊按鈕將開啟 Google 地圖 APP，自動帶入您的目前位置作為起點。
+             說明：點擊按鈕將開啟您的 Google 地圖 APP，並自動帶入目前的定位作為起點。
           </div>
         </section>
       </section>
 
       <section id="others-screen" class="screen">
-        <div class="section-title"><span style="font-size: 24px;">📸</span> 智慧站牌人流監測</div>
-        <p class="hint-text">採用 Firestore WebSocket 事件驅動技術，數字有變化才會推播，毫秒級零時差且極致省電。</p>
-        
-        <div class="card" style="text-align: center; padding: 20px;">
-            <div style="width:100%; text-align:center; padding:20px 15px; background:#e8f6f3; color:#009475; border:1px solid #00b894; border-radius: 12px;">
-                <div style="font-size: 14px; margin-bottom: 12px; font-weight: bold;">📡 實體站牌 Edge AI 節點已連線</div>
-                <div style="font-size: 24px; font-weight: 800; color: var(--color-text-main);">
-                    目前候車人數：<span id="person-count" style="font-size: 42px; color: #00b894; margin: 0 5px; display: inline-block; transition: color 0.3s;">0</span> 人
-                </div>
-                <div style="font-size: 12px; color: #666; margin-top: 15px;">(雲端 WebSocket 即時推播)</div>
-            </div>
-        </div>
+        <div class="section-title"><span style="font-size: 24px;">🍔</span> 站牌周邊美食推薦</div>
+        <p class="hint-text">等車不無聊！為您搜尋站牌附近評價最高的美食餐廳。</p>
 
-        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-
-        <div class="section-title"><span style="font-size: 24px;">🍔</span> 到站美食推薦</div>
         <div class="card food-header-card" id="food-location-container">
            <span>📍</span>
            <label for="food-stop-select">附近站牌：</label>
            <select id="food-stop-select" class="food-select">
-               <option value="">請選擇...</option>
+               <option value="">請先選擇站牌...</option>
            </select>
         </div>
-        <p class="hint-text">透過 Google Maps 搜尋站牌附近評價不錯的美食！</p>
-        <div class="card scrollable-list" id="food-list-container">
-            <div style="text-align:center; padding:10px;">請選擇站牌以載入美食</div>
+        
+        <div class="card scrollable-list" id="food-list-container" style="flex: 1; max-height: none; margin-bottom: 10px;">
+            <div style="text-align:center; padding:30px 10px; color:#888;">請選擇上方站牌以載入美食</div>
         </div>
       </section>
 
@@ -646,7 +601,7 @@
               </div>
               <div class="info-row">
                 <span style="font-size:16px;">👥</span>
-                <span>狀況：<span id="detail-crowd-dot" class="dot grey"></span> <span id="detail-crowd-text">讀取中...</span></span>
+                <span>狀況：<span id="detail-crowd-dot" class="dot grey"></span> <span id="detail-crowd-text" style="transition: color 0.3s;">讀取中...</span></span>
               </div>
             </div>
           </div>
@@ -685,64 +640,64 @@
       </section>
     </main>
 
-    <div id="add-stop-modal" class="modal-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 20;">
-      <div class="modal-card card" style="width: 90%; max-width: 350px; padding: 20px; text-align: center;">
-        <div class="modal-title" style="font-size: 20px; font-weight: 700; margin-bottom: 10px;">新增常用站牌</div>
-        <div class="modal-row" style="text-align: left; margin-bottom: 15px;">
-          <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px;">搜尋/選擇路線</label>
-          <input type="text" id="input-route-search" placeholder="輸入路線號碼 (例如: 307)" style="width: 100%; padding: 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 14px; margin-bottom: 5px;">
-          <select id="select-route-firebase" style="width: 100%; padding: 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 14px;"><option value="">載入中...</option></select>
-        </div>
-        <div class="modal-row" style="text-align: left; margin-bottom: 20px;">
-          <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px;">選擇站牌</label>
-          <select id="select-stop-firebase" disabled style="width: 100%; padding: 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 14px; background-color: #f0f0f0;"><option value="">請先選擇路線</option></select>
-        </div>
-        <div class="modal-actions" style="display: flex; gap: 10px;">
-          <button type="button" id="btn-add-stop-cancel" class="btn btn-secondary" style="flex: 1;">取消</button>
-          <button type="button" id="btn-add-stop-confirm" class="btn btn-primary" style="flex: 1;">新增</button>
-        </div>
-      </div>
-    </div>
-    
-    <div id="alight-stop-modal" class="modal-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 25;">
-      <div class="modal-card card" style="width: 90%; max-width: 350px; padding: 20px; text-align: center;">
-        <div class="modal-title" style="font-size: 18px; font-weight: 700; margin-bottom: 10px;">請選擇下車站牌</div>
-        <p style="font-size:12px; color:#666; margin-bottom:15px;">系統將利用大數據與動態座標精準試算行車時間</p>
-        <select id="select-alight-stop" style="width: 100%; padding: 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 14px; margin-bottom: 20px;">
-            <option value="">載入中...</option>
-        </select>
-        <div class="modal-actions" style="display: flex; gap: 10px;">
-          <button type="button" id="btn-alight-cancel" class="btn btn-secondary" style="flex: 1;">取消</button>
-          <button type="button" id="btn-alight-confirm" class="btn btn-primary" style="flex: 1;">計算並設定</button>
-        </div>
-      </div>
-    </div>
-    
-    <div id="reserve-overlay" class="modal-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 20;">
-      <div class="modal-card card" style="width: 90%; max-width: 350px; padding: 20px;">
-        <div style="font-size: 18px; font-weight: 700; margin-bottom: 10px;">預約成功</div>
-        <p id="reserve-msg">已加入預約紀錄。</p>
-        <button id="btn-modal-ok" class="btn btn-primary" style="width:100%; margin-top:10px;">確定</button>
-      </div>
-    </div>
-    
-    <div id="notification-overlay" class="modal-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 30;">
-      <div class="modal-card card" style="width: 90%; max-width: 350px; padding: 20px; border-left: 5px solid #00b894;">
-        <div style="font-size: 20px; font-weight: 700; margin-bottom: 10px; display:flex; align-items:center; gap:8px;">
-           <span>🔔</span> <span id="notif-title">到站通知</span>
-        </div>
-        <div id="notification-content" style="font-size:15px; line-height:1.5; margin-bottom:15px;">內容...</div>
-        <button id="btn-notification-ok" class="btn btn-primary" style="width:100%;">收到</button>
-      </div>
-    </div>
-
     <nav class="bottom-nav">
       <button class="nav-btn active" data-target="home-screen"><div class="nav-icon">🏠</div><div>首頁</div></button>
       <button class="nav-btn" data-target="stops-screen"><div class="nav-icon">⭐</div><div>常用</div></button>
       <button class="nav-btn" data-target="reservations-screen"><div class="nav-icon">📝</div><div>預約</div></button>
       <button class="nav-btn" data-target="route-screen"><div class="nav-icon">🧭</div><div>規劃</div></button>
-      <button class="nav-btn" data-target="others-screen"><div class="nav-icon">📸</div><div>AI分析</div></button>
+      <button class="nav-btn" data-target="others-screen"><div class="nav-icon">🍔</div><div>美食</div></button>
     </nav>
+  </div>
+
+  <div id="add-stop-modal" class="modal-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 20;">
+    <div class="modal-card card" style="width: 90%; max-width: 350px; padding: 20px; text-align: center;">
+      <div class="modal-title" style="font-size: 20px; font-weight: 700; margin-bottom: 10px;">新增常用站牌</div>
+      <div class="modal-row" style="text-align: left; margin-bottom: 15px;">
+        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px;">搜尋/選擇路線</label>
+        <input type="text" id="input-route-search" placeholder="輸入路線號碼 (例如: 307)" style="width: 100%; padding: 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 14px; margin-bottom: 5px;">
+        <select id="select-route-firebase" style="width: 100%; padding: 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 14px;"><option value="">載入中...</option></select>
+      </div>
+      <div class="modal-row" style="text-align: left; margin-bottom: 20px;">
+        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px;">選擇站牌</label>
+        <select id="select-stop-firebase" disabled style="width: 100%; padding: 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 14px; background-color: #f0f0f0;"><option value="">請先選擇路線</option></select>
+      </div>
+      <div class="modal-actions" style="display: flex; gap: 10px;">
+        <button type="button" id="btn-add-stop-cancel" class="btn btn-secondary" style="flex: 1;">取消</button>
+        <button type="button" id="btn-add-stop-confirm" class="btn btn-primary" style="flex: 1;">新增</button>
+      </div>
+    </div>
+  </div>
+  
+  <div id="alight-stop-modal" class="modal-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 25;">
+    <div class="modal-card card" style="width: 90%; max-width: 350px; padding: 20px; text-align: center;">
+      <div class="modal-title" style="font-size: 18px; font-weight: 700; margin-bottom: 10px;">請選擇下車站牌</div>
+      <p style="font-size:12px; color:#666; margin-bottom:15px;">系統將利用大數據與動態座標精準試算行車時間</p>
+      <select id="select-alight-stop" style="width: 100%; padding: 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 14px; margin-bottom: 20px;">
+          <option value="">載入中...</option>
+      </select>
+      <div class="modal-actions" style="display: flex; gap: 10px;">
+        <button type="button" id="btn-alight-cancel" class="btn btn-secondary" style="flex: 1;">取消</button>
+        <button type="button" id="btn-alight-confirm" class="btn btn-primary" style="flex: 1;">計算並設定</button>
+      </div>
+    </div>
+  </div>
+  
+  <div id="reserve-overlay" class="modal-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 20;">
+    <div class="modal-card card" style="width: 90%; max-width: 350px; padding: 20px;">
+      <div style="font-size: 18px; font-weight: 700; margin-bottom: 10px;">預約成功</div>
+      <p id="reserve-msg">已加入預約紀錄。</p>
+      <button id="btn-modal-ok" class="btn btn-primary" style="width:100%; margin-top:10px;">確定</button>
+    </div>
+  </div>
+  
+  <div id="notification-overlay" class="modal-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 30;">
+    <div class="modal-card card" style="width: 90%; max-width: 350px; padding: 20px; border-left: 5px solid #00b894;">
+      <div style="font-size: 20px; font-weight: 700; margin-bottom: 10px; display:flex; align-items:center; gap:8px;">
+         <span>🔔</span> <span id="notif-title">到站通知</span>
+      </div>
+      <div id="notification-content" style="font-size:15px; line-height:1.5; margin-bottom:15px;">內容...</div>
+      <button id="btn-notification-ok" class="btn btn-primary" style="width:100%;">收到</button>
+    </div>
   </div>
 
   <script type="module">
@@ -780,7 +735,7 @@
     let RESERVATIONS = [];
     let currentRouteFareData = null;
     let currentRouteStopsData = null; 
-    window.latestAICount = 0;
+    window.latestAICount = 0; // 儲存最新的 AI 偵測人數
 
     initDataFromStorage();
     updateWeather();
@@ -1372,6 +1327,31 @@
     let pendingBusInfo = null;
     let pendingReservationType = null; 
 
+    // 【新增】將更新車況 UI 的邏輯獨立出來，讓 AI 連線時可以即時呼叫
+    window.updateCrowdDisplay = function() {
+       const crowdDot = document.getElementById("detail-crowd-dot");
+       const crowdText = document.getElementById("detail-crowd-text");
+       if (!crowdDot || !crowdText) return;
+
+       let count = window.latestAICount !== undefined ? window.latestAICount : 0;
+       
+       if (count <= 15) { 
+           crowdDot.className = "dot green"; 
+           crowdText.innerHTML = ` 舒適 <span style="font-size:12px;color:#888;">(Edge AI 偵測站牌約 ${count} 人)</span>`; 
+       } else if (count <= 25) { 
+           crowdDot.className = "dot yellow"; 
+           crowdText.innerHTML = ` 普通 <span style="font-size:12px;color:#888;">(Edge AI 偵測站牌約 ${count} 人)</span>`; 
+       } else { 
+           crowdDot.className = "dot red"; 
+           crowdText.innerHTML = ` 擁擠 <span style="font-size:12px;color:#888;">(Edge AI 偵測站牌約 ${count} 人)</span>`; 
+       }
+       
+       // 加入特效
+       crowdText.classList.remove("count-updated");
+       void crowdText.offsetWidth; // 強制重繪
+       crowdText.classList.add("count-updated");
+    };
+
     window.openDecisionFor = function(busInfo) {
        pendingBusInfo = busInfo; 
        setActiveScreen("detail-screen");
@@ -1384,22 +1364,9 @@
        destSelect.innerHTML = "<option value=''>載入中...</option>";
        destSelect.disabled = true;
 
-       const crowdDot = document.getElementById("detail-crowd-dot");
-       const crowdText = document.getElementById("detail-crowd-text");
+       // 開啟詳細頁面時，立刻更新一次 AI 數據
+       window.updateCrowdDisplay();
        
-       let aiCount = window.latestAICount !== undefined ? window.latestAICount : 0;
-       
-       if (aiCount <= 25) { 
-           crowdDot.className = "dot green"; 
-           crowdText.textContent = ` 舒適 (即時數據約 ${aiCount} 人)`; 
-       } else if (aiCount <= 45) { 
-           crowdDot.className = "dot yellow"; 
-           crowdText.textContent = ` 普通 (即時數據約 ${aiCount} 人)`; 
-       } else { 
-           crowdDot.className = "dot red"; 
-           crowdText.textContent = ` 擁擠 (即時數據約 ${aiCount} 人)`; 
-       }
-
        const route = allRoutesConfig.find(r => r.id === busInfo.routeId);
        let hasValidStops = false;
        let startIndex = -1;
@@ -1526,7 +1493,7 @@
 
     window.updateFoodStopSelect = function() {
         const select = document.getElementById("food-stop-select");
-        select.innerHTML = '<option value="">請選擇站牌...</option>';
+        select.innerHTML = '<option value="">請先選擇站牌...</option>';
         if (STOPS.length === 0) {
             select.innerHTML = '<option value="">請先新增常用站牌</option>';
             return;
@@ -1542,7 +1509,7 @@
 
     function searchFood(stopName) {
         const container = document.getElementById("food-list-container");
-        container.innerHTML = '<div style="padding:20px;text-align:center;">🔍 正在搜尋附近美食...</div>';
+        container.innerHTML = '<div style="padding:30px 10px; text-align:center;">🔍 正在搜尋附近美食...</div>';
         
         const request = {
             query: stopName + " 附近美食",
@@ -1561,15 +1528,23 @@
                         const item = document.createElement("div");
                         item.className = "food-item";
                         item.innerHTML = `<div class="food-img" style="background-image: url('${photoUrl}')"></div><div class="food-info"><h4>${place.name}</h4><div class="food-meta">⭐ ${place.rating || '無'} · ${place.formatted_address}</div></div>`;
-                        item.addEventListener("click", () => { window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + " " + place.formatted_address)}`, '_blank'); });
+                        
+                        // iOS/Android 雙平台地圖跳轉邏輯
+                        item.addEventListener("click", () => { 
+                            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+                            const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + " " + place.formatted_address)}`;
+                            if (isIOS) window.location.href = url;
+                            else window.open(url, '_blank');
+                        });
+                        
                         container.appendChild(item);
                     });
                 } else {
-                    container.innerHTML = `<div style="padding:20px;text-align:center;">找不到結果。<br><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stopName + " 美食")}" target="_blank" style="color:#00b894; font-weight:bold;">👉 點此直接開啟 Google 地圖搜尋</a></div>`;
+                    container.innerHTML = `<div style="padding:30px 10px;text-align:center;">找不到結果。<br><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stopName + ' 美食')}" target="_blank" style="color:#00b894; font-weight:bold;">👉 點此直接開啟 Google 地圖搜尋</a></div>`;
                 }
             });
         } catch(e) {
-             container.innerHTML = `<div style="padding:20px;text-align:center;">無法載入 API。<br><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stopName + " 美食")}" target="_blank" style="color:#00b894; font-weight:bold;">👉 點此直接開啟 Google 地圖搜尋</a></div>`;
+             container.innerHTML = `<div style="padding:30px 10px;text-align:center;">無法載入 API。<br><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stopName + ' 美食')}" target="_blank" style="color:#00b894; font-weight:bold;">👉 點此直接開啟 Google 地圖搜尋</a></div>`;
         }
     }
 
@@ -1812,20 +1787,16 @@
     };
 
     // ==========================================
-    // 邊緣運算：WebSocket 事件驅動推播
+    // 【重要連動】從 Firebase 取得 AI 人數，並動態更新「詳細資訊」畫面
     // ==========================================
     function listenToEdgeAI() {
-        const aiCountEl = document.getElementById("person-count");
         if(db) {
             onSnapshot(doc(db, "stops_realtime", "stop_A"), (docSnap) => {
                 if(docSnap.exists()) {
                     const count = docSnap.data().count || 0;
                     window.latestAICount = count; 
-                    if(aiCountEl) {
-                        aiCountEl.innerText = count;
-                        aiCountEl.style.color = "#ff7675"; 
-                        setTimeout(() => { aiCountEl.style.color = "#00b894"; }, 500);
-                    }
+                    // 如果目前正在看詳細資訊畫面，立刻更新 UI
+                    window.updateCrowdDisplay();
                 }
             }, (error) => {
                 console.error("無法取得 AI 人數資料: ", error);
@@ -1899,57 +1870,34 @@
       if(btn) btn.classList.add("active");
     }
 
+    // 規劃路線 iOS 跳轉修復
     document.getElementById("btn-plan-route").addEventListener("click", () => {
-    const dest = document.getElementById("destInput").value.trim();
-    if (!dest) { alert("請輸入目的地！"); return; }
-    
-    // 讓按鈕顯示載入中，避免使用者重複點擊
-    const btn = document.getElementById("btn-plan-route");
-    const originalText = btn.innerHTML;
-    btn.innerHTML = "🗺️ 正在開啟導航...";
-    btn.disabled = true;
+        const dest = document.getElementById("destInput").value.trim();
+        if (!dest) { alert("請輸入目的地！"); return; }
+        
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
-    if (navigator.geolocation) {
-        // 加入第三個參數：定位設定選項 (解決卡死問題的核心)
-        const geoOptions = {
-            enableHighAccuracy: false, // 關閉高精確度要求，抓大概位置即可 (速度快很多)
-            timeout: 3000,             // 最多只等 5 秒鐘 (5000毫秒)，超時就執行失敗備案
-            maximumAge: 60000          // 允許使用 60 秒內抓過的舊定位資料
-        };
-
-        navigator.geolocation.getCurrentPosition(
-            (p) => {
-                // 【定位成功】
-                const lat = p.coords.latitude;
-                const lon = p.coords.longitude;
-                // 正確的 Google Maps 官方導航網址 (包含起點與終點)
-                const url = `https://www.google.com/maps/dir/?api=1&origin=${lat},${lon}&destination=${encodeURIComponent(dest)}&travelmode=transit`;
-                
-                window.open(url, '_blank'); // 另開分頁
-                
-                btn.innerHTML = originalText; 
-                btn.disabled = false;
-            },
-            (err) => {
-                // 【定位失敗或等超過5秒】直接執行備用方案，不讓畫面卡死
-                console.warn("定位超時或拒絕，改用無起點導航", err);
-                
-                // 正確的 Google Maps 官方導航網址 (只帶終點，讓 Google 地圖 APP 自己去抓定位)
-                const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}&travelmode=transit`;
-                
-                window.open(url, '_blank'); // 另開分頁
-                
-                btn.innerHTML = originalText; 
-                btn.disabled = false;
-            },
-            geoOptions // 傳入剛剛設定的防卡死選項
-        );
-    } else {
-        alert("瀏覽器不支援定位");
-        btn.innerHTML = originalText; 
-        btn.disabled = false;
-    }
-});
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (p) => {
+                    const lat = p.coords.latitude;
+                    const lon = p.coords.longitude;
+                    const url = `https://www.google.com/maps/dir/?api=1&origin=${lat},${lon}&destination=${encodeURIComponent(dest)}&travelmode=transit`;
+                    
+                    if (isIOS) window.location.href = url;
+                    else window.open(url, '_blank');
+                },
+                () => {
+                    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}&travelmode=transit`;
+                    
+                    if (isIOS) window.location.href = url;
+                    else window.open(url, '_blank');
+                }
+            );
+        } else {
+            alert("瀏覽器不支援定位");
+        }
+    });
 
     window.goToHome = function() {
       const welcomeScreen = document.getElementById("welcome-screen");
@@ -2044,16 +1992,22 @@
       }
       STOPS.forEach(stop => {
         let routeName = stop.routeName;
-        let isAccessible = false;
         if (allRoutesConfig.length > 0) {
            const r = allRoutesConfig.find(x => x.id === stop.routeId);
-           if(r) { routeName = r.name; isAccessible = r.isAccessible; }
+           if(r) { routeName = r.name; }
         }
         const badgeHtml = routeName ? `<span style="background:var(--color-primary); color:white; padding:2px 6px; border-radius:4px; font-size:12px; margin-right:6px; font-weight:700;">${routeName}</span>` : '';
-        const accessibleHtml = isAccessible ? '<span class="icon-accessible">♿</span>' : '';
         const card = document.createElement("div");
         card.className = "stop-card card";
-        card.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center;"><div style="font-weight:600; font-size:15px; display:flex; align-items:center;">${badgeHtml} ${stop.name} ${accessibleHtml}</div><button class="chip-btn" style="background:#ffe6e6;color:red;" onclick="removeStop(${stop.id})">刪除</button></div><div style="font-size:12px; color:#666; margin-top:4px; padding-left: 2px;">${stop.direction}</div>`;
+        
+        // 修正：徹底移除常用站牌清單的無障礙標示，因為這裡只是靜態路線，不代表實體公車狀況
+        card.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-weight:600; font-size:15px; display:flex; align-items:center;">${badgeHtml} ${stop.name}</div>
+            <button class="chip-btn" style="background:#ffe6e6;color:red;" onclick="removeStop(${stop.id})">刪除</button>
+          </div>
+          <div style="font-size:12px; color:#666; margin-top:4px; padding-left: 2px;">${stop.direction}</div>
+        `;
         stopsListEl.appendChild(card);
       });
     }
