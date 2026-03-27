@@ -1,6 +1,6 @@
 const CACHE_NAME = 'bus-app-cache-v1';
 const urlsToCache = [
-  './3.html',
+  './index.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'
