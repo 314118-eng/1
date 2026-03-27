@@ -1900,26 +1900,56 @@
     }
 
     document.getElementById("btn-plan-route").addEventListener("click", () => {
-        const dest = document.getElementById("destInput").value.trim();
-        if (!dest) { alert("請輸入目的地！"); return; }
-        
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                (p) => {
-                    const lat = p.coords.latitude;
-                    const lon = p.coords.longitude;
-                    const url = `https://www.google.com/maps/dir/?api=1&origin=${lat},${lon}&destination=${encodeURIComponent(dest)}&travelmode=transit`;
-                    window.open(url, '_blank');
-                },
-                () => {
-                    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}&travelmode=transit`;
-                    window.open(url, '_blank');
-                }
-            );
-        } else {
-            alert("瀏覽器不支援定位");
-        }
-    });
+    const dest = document.getElementById("destInput").value.trim();
+    if (!dest) { alert("請輸入目的地！"); return; }
+    
+    // 讓按鈕顯示載入中，避免使用者重複點擊
+    const btn = document.getElementById("btn-plan-route");
+    const originalText = btn.innerHTML;
+    btn.innerHTML = "🗺️ 正在開啟導航...";
+    btn.disabled = true;
+
+    if (navigator.geolocation) {
+        // 加入第三個參數：定位設定選項 (解決卡死問題的核心)
+        const geoOptions = {
+            enableHighAccuracy: false, // 關閉高精確度要求，抓大概位置即可 (速度快很多)
+            timeout: 3000,             // 最多只等 5 秒鐘 (5000毫秒)，超時就執行失敗備案
+            maximumAge: 60000          // 允許使用 60 秒內抓過的舊定位資料
+        };
+
+        navigator.geolocation.getCurrentPosition(
+            (p) => {
+                // 【定位成功】
+                const lat = p.coords.latitude;
+                const lon = p.coords.longitude;
+                // 正確的 Google Maps 官方導航網址 (包含起點與終點)
+                const url = `https://www.google.com/maps/dir/?api=1&origin=${lat},${lon}&destination=${encodeURIComponent(dest)}&travelmode=transit`;
+                
+                window.open(url, '_blank'); // 另開分頁
+                
+                btn.innerHTML = originalText; 
+                btn.disabled = false;
+            },
+            (err) => {
+                // 【定位失敗或等超過5秒】直接執行備用方案，不讓畫面卡死
+                console.warn("定位超時或拒絕，改用無起點導航", err);
+                
+                // 正確的 Google Maps 官方導航網址 (只帶終點，讓 Google 地圖 APP 自己去抓定位)
+                const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}&travelmode=transit`;
+                
+                window.open(url, '_blank'); // 另開分頁
+                
+                btn.innerHTML = originalText; 
+                btn.disabled = false;
+            },
+            geoOptions // 傳入剛剛設定的防卡死選項
+        );
+    } else {
+        alert("瀏覽器不支援定位");
+        btn.innerHTML = originalText; 
+        btn.disabled = false;
+    }
+});
 
     window.goToHome = function() {
       const welcomeScreen = document.getElementById("welcome-screen");
