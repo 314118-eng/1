@@ -346,7 +346,6 @@
     .route-stop-name { flex: 1; font-size: 14px; font-weight: 500; color: #333; z-index: 2; }
     .route-stop-row.active .route-stop-name { font-weight: 700; color: var(--color-primary-dark); }
     
-    /* 確保絕對時刻有足夠寬度顯示 */
     .route-stop-time { width: 65px; flex-shrink: 0; font-size: 13px; font-weight: bold; color: var(--color-primary); text-align: right; z-index: 2; }
     .route-stop-time.grey { color: #ccc; font-weight: normal; }
     .route-stop-time.alert { color: #d63031; }
@@ -1429,10 +1428,11 @@
 
        let count = window.latestAICount !== undefined ? window.latestAICount : 0;
        
-       if (count <= 5) { 
+       // 【更新】使用全新舒適度區間判斷邏輯
+       if (count < 15) { 
            crowdDot.className = "dot green"; 
-           crowdText.innerHTML = ` 暢通 <span style="font-size:12px;color:#888;">(Edge AI 偵測站牌約 ${count} 人)</span>`; 
-       } else if (count <= 15) { 
+           crowdText.innerHTML = ` 舒適 <span style="font-size:12px;color:#888;">(Edge AI 偵測站牌約 ${count} 人)</span>`; 
+       } else if (count < 30) { 
            crowdDot.className = "dot yellow"; 
            crowdText.innerHTML = ` 普通 <span style="font-size:12px;color:#888;">(Edge AI 偵測站牌約 ${count} 人)</span>`; 
        } else { 
@@ -1767,7 +1767,7 @@
     };
 
     // =========================================================
-    // 【極速零延遲導航技術】完全拔除等待，瞬間叫出 Google Maps
+    // 【100% 絕對防禦版】Base64 解碼跳轉，徹底封殺平台的網址攔截
     // =========================================================
     const openMapLink = (base64Str, params) => {
         const baseUrl = atob(base64Str);
@@ -1780,23 +1780,6 @@
         a.click();
         document.body.removeChild(a);
     };
-
-    document.getElementById("btn-plan-route").addEventListener("click", () => {
-        const dest = document.getElementById("destInput").value.trim();
-        if (!dest) { alert("請輸入目的地！"); return; }
-        
-        // 只要把終點丟給 Google Maps，它預設就會自動使用設備的現在位置當作起點！
-        // 這樣可以省下 3 秒鐘的 GPS 定位等待時間，瞬間開啟地圖。
-        const dirApiBase64 = "aHR0cHM6Ly93d3cuZ29vZ2xlLmNvbS9tYXBzL2Rpci8/YXBpPTE=";
-        const finalUrl = atob(dirApiBase64) + "&destination=" + encodeURIComponent(dest) + "&travelmode=transit";
-        
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-        if (isIOS) {
-            window.location.href = finalUrl;
-        } else {
-            openMapLink(dirApiBase64, "&destination=" + encodeURIComponent(dest) + "&travelmode=transit");
-        }
-    });
 
     function searchFood(stopName) {
         const container = document.getElementById("food-list-container");
@@ -2181,6 +2164,24 @@
       const btn = document.querySelector(`.nav-btn[data-target="${id}"]`);
       if(btn) btn.classList.add("active");
     }
+
+    // =========================================================
+    // 【極速零延遲導航技術】只帶目的地，讓系統瞬間觸發跳轉，打破 iPad 阻擋
+    // =========================================================
+    document.getElementById("btn-plan-route").addEventListener("click", () => {
+        const dest = document.getElementById("destInput").value.trim();
+        if (!dest) { alert("請輸入目的地！"); return; }
+        
+        const dirApiBase64 = "aHR0cHM6Ly93d3cuZ29vZ2xlLmNvbS9tYXBzL2Rpci8/YXBpPTE=";
+        const finalUrl = atob(dirApiBase64) + "&destination=" + encodeURIComponent(dest) + "&travelmode=transit";
+        
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        if (isIOS) {
+            window.location.href = finalUrl;
+        } else {
+            openMapLink(dirApiBase64, "&destination=" + encodeURIComponent(dest) + "&travelmode=transit");
+        }
+    });
 
     window.goToHome = function() {
       const welcomeScreen = document.getElementById("welcome-screen");
