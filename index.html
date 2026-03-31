@@ -16,7 +16,7 @@
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js')
           .then(registration => {
-            console.log('ServiceWorker 註冊成功，範圍為: ', registration.scope);
+            console.log('ServiceWorker 註冊成功');
           })
           .catch(err => {
             console.log('ServiceWorker 註冊失敗: ', err);
@@ -73,6 +73,7 @@
       height: 145px;
       background: linear-gradient(135deg, #00b894, #00cec9);
       z-index: 0;
+      transition: height 0.3s ease-out;
     }
 
     header.app-header {
@@ -121,7 +122,7 @@
       scrollbar-width: thin; 
     }
     
-    #stops-screen, #reservations-screen, #route-screen, #others-screen, #detail-screen {
+    #stops-screen, #reservations-screen, #route-screen, #others-screen {
         overflow-y: auto;
         padding-bottom: 20px;
     }
@@ -326,17 +327,32 @@
     .info-row {
       display: flex; align-items: center; gap: 8px; font-size: 14px; color: #4a4a4a;
     }
-    
-    .neighbor-row {
-        display: flex; justify-content: space-between; align-items: center;
-        padding: 8px 0; border-bottom: 1px solid #eee; font-size: 13px;
+
+    /* ===== 左車輛、右時間的動態軌跡設計 ===== */
+    .route-stop-row {
+        display: flex; align-items: center; padding: 12px 15px; position: relative;
     }
-    .neighbor-row:last-child { border-bottom: none; }
-    .neighbor-label { color: #888; width: 60px; flex-shrink: 0; font-weight: 500;}
-    .neighbor-name { font-weight: 600; flex: 1; text-align: left; padding: 0 8px; display: flex; align-items: center; gap:4px; }
-    .seq-tag { font-size: 10px; background: #eee; color: #666; padding: 1px 4px; border-radius: 4px; }
-    .neighbor-time { font-weight: 700; color: var(--color-primary); width: 70px; text-align: right; font-size: 13px;}
-    .neighbor-time.grey { color: #ccc; font-weight: 400; }
+    .route-stop-row::before {
+        content: ''; position: absolute; left: 60px; 
+        top: 0; bottom: 0; width: 2px; background: #dfe6e9; z-index: 1;
+    }
+    .route-stop-row:first-child::before { top: 50%; }
+    .route-stop-row:last-child::before { bottom: 50%; }
+    
+    .route-bus-icon { width: 30px; text-align: center; flex-shrink: 0; z-index: 2; margin-right: 10px; font-size: 18px; }
+    
+    .route-stop-dot { position: relative; width: 12px; height: 12px; background: #fff; border: 2px solid #b2bec3; border-radius: 50%; z-index: 2; margin-right: 10px; flex-shrink: 0; }
+    .route-stop-row.active .route-stop-dot { border-color: var(--color-primary); background: var(--color-primary); box-shadow: 0 0 0 3px rgba(0, 184, 148, 0.2); }
+    .route-stop-name { flex: 1; font-size: 14px; font-weight: 500; color: #333; z-index: 2; }
+    .route-stop-row.active .route-stop-name { font-weight: 700; color: var(--color-primary-dark); }
+    
+    /* 確保絕對時刻有足夠寬度顯示 */
+    .route-stop-time { width: 65px; flex-shrink: 0; font-size: 13px; font-weight: bold; color: var(--color-primary); text-align: right; z-index: 2; }
+    .route-stop-time.grey { color: #ccc; font-weight: normal; }
+    .route-stop-time.alert { color: #d63031; }
+    
+    .bus-live-icon { animation: bounce 1s infinite alternate; display: inline-block; padding-bottom:2px; }
+    @keyframes bounce { from { transform: translateY(0); } to { transform: translateY(-3px); } }
 
     .dot {
       width: 10px; height: 10px; border-radius: 50%; display: inline-block;
@@ -542,7 +558,7 @@
             </button>
           </div>
           <div style="padding: 15px; color: #666; font-size: 13px; line-height: 1.5;">
-             說明：點擊按鈕將開啟您的 Google 地圖 APP，並自動帶入目前的定位作為起點。
+             說明：點擊按鈕將開啟您的 Google 地圖 APP，自動帶入目前的定位作為起點。
           </div>
         </section>
       </section>
@@ -564,78 +580,79 @@
         </div>
       </section>
 
-      <section id="detail-screen" class="screen">
-        <button class="btn btn-secondary" type="button" id="btn-back" style="margin-bottom: 10px; font-size:12px; padding:6px 12px;">← 返回</button>
+      <section id="detail-screen" class="screen" style="padding: 0; overflow: hidden;">
+        
+        <div style="flex-shrink: 0; padding: 0 16px 15px; position: relative; z-index: 10;">
+          <button class="btn btn-secondary" type="button" id="btn-back" style="width: 100%; background: #ffffff; color: var(--color-primary-dark); border-radius: 999px; padding: 10px; font-size: 14px; font-weight: bold; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">← 返回</button>
+        </div>
 
-        <div class="card" style="padding: 30px 20px 20px; text-align: center; clear: both;">
-          
-          <div class="detail-route-num" id="detail-route-num">--</div>
-          <div class="detail-direction" id="detail-route-dest">-- ⇄ --</div>
-          <div class="detail-current-stop" id="detail-current-stop">所在站牌：--</div>
+        <div style="flex: 1; overflow-y: auto; padding-bottom: 20px; margin: 0 -16px; padding-left: 16px; padding-right: 16px;">
+          <div class="card" style="padding: 30px 20px 20px; text-align: center; clear: both; min-height: 100%; border-radius: 24px; margin-top: 0; box-shadow: 0 -4px 15px rgba(0,0,0,0.05);">
+            
+            <div class="detail-route-num" id="detail-route-num">--</div>
+            <div class="detail-direction" id="detail-route-dest">-- ⇄ --</div>
+            <div class="detail-current-stop" id="detail-current-stop">所在站牌：--</div>
 
-          <div class="detail-status-big" id="detail-status-big">--</div>
-          <div class="detail-status-sub" id="detail-status-sub">--</div>
+            <div class="detail-status-big" id="detail-status-big">--</div>
+            <div class="detail-status-sub" id="detail-status-sub">--</div>
 
-          <div class="info-section">
-            <div class="info-title">前後站動態參考 (確認車輛位置)</div>
-            <div class="info-card">
-              <div class="neighbor-row">
-                 <div class="neighbor-label">上一站</div>
-                 <div class="neighbor-name" id="prev-stop-name">--</div>
-                 <div class="neighbor-time" id="prev-stop-time">--</div>
+            <div class="info-section">
+              <div class="info-title" style="display:flex; justify-content:space-between; align-items:center;">
+                  <span>整條路線動態 (即時車輛位置)</span>
+                  <button id="btn-detail-refresh" style="border:none; background:none; cursor:pointer; color:var(--color-primary); font-size:16px;">🔄</button>
               </div>
-              <div class="neighbor-row">
-                 <div class="neighbor-label">下一站</div>
-                 <div class="neighbor-name" id="next-stop-name">--</div>
-                 <div class="neighbor-time" id="next-stop-time">--</div>
+              <div class="info-card" style="padding: 0; overflow: hidden;">
+                <div id="full-route-list" style="max-height: 300px; overflow-y: auto; position: relative; background: #fff;">
+                  <div style="padding:30px; text-align:center; color:#888;">載入中...</div>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div class="info-section">
-            <div class="info-title">車況資訊</div>
-            <div class="info-card">
-              <div class="info-row">
-                <span style="font-size:16px;">🚌</span>
-                <span>車型：<span id="detail-bus-type">一般公車</span></span>
-              </div>
-              <div class="info-row">
-                <span style="font-size:16px;">👥</span>
-                <span>狀況：<span id="detail-crowd-dot" class="dot grey"></span> <span id="detail-crowd-text" style="transition: color 0.3s;">讀取中...</span></span>
+            <div class="info-section">
+              <div class="info-title">車況資訊</div>
+              <div class="info-card">
+                <div class="info-row">
+                  <span style="font-size:16px;">🚌</span>
+                  <span>車型：<span id="detail-bus-type">一般公車</span></span>
+                </div>
+                <div class="info-row">
+                  <span style="font-size:16px;">👥</span>
+                  <span>狀況：<span id="detail-crowd-dot" class="dot grey"></span> <span id="detail-crowd-text" style="transition: color 0.3s;">讀取中...</span></span>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div class="info-section">
-            <div class="info-title">票價試算 (目前站牌 ➞ 下車站牌)</div>
-            <div class="info-card">
-              <div style="margin-bottom: 12px; text-align: left;">
-                <label style="font-size:12px; font-weight:600; color:#666; margin-bottom:4px; display:block;">選擇下車站牌：</label>
-                <select id="fare-dest-select" style="width: 100%; padding: 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 14px; background-color: var(--color-surface); outline: none;">
-                  <option value="">載入中...</option>
-                </select>
+            <div class="info-section">
+              <div class="info-title">票價試算 (目前站牌 ➞ 下車站牌)</div>
+              <div class="info-card">
+                <div style="margin-bottom: 12px; text-align: left;">
+                  <label style="font-size:12px; font-weight:600; color:#666; margin-bottom:4px; display:block;">選擇下車站牌：</label>
+                  <select id="fare-dest-select" style="width: 100%; padding: 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 14px; background-color: var(--color-surface); outline: none;">
+                    <option value="">載入中...</option>
+                  </select>
+                </div>
+                <div class="info-row">
+                  <span style="font-size:16px;">💰</span>
+                  <span>全票：<span id="detail-fare-full" style="font-weight:700; color:var(--color-primary-dark);">--</span></span>
+                </div>
+                <div class="info-row">
+                  <span style="font-size:16px;">🎟️</span>
+                  <span>半票：<span id="detail-fare-half" style="font-weight:700; color:#e67e22;">--</span></span>
+                </div>
+                <div class="info-row">
+                  <span style="font-size:16px;">💳</span>
+                  <span>學生：<span id="detail-fare-student" style="font-weight:700; color:#4a69bd;">--</span></span>
+                </div>
+                <div id="fare-hint" style="font-size: 11px; color: #888; margin-top: 8px; text-align: right;"></div>
               </div>
-              <div class="info-row">
-                <span style="font-size:16px;">💰</span>
-                <span>全票：<span id="detail-fare-full" style="font-weight:700; color:var(--color-primary-dark);">--</span></span>
-              </div>
-              <div class="info-row">
-                <span style="font-size:16px;">🎟️</span>
-                <span>半票：<span id="detail-fare-half" style="font-weight:700; color:#e67e22;">--</span></span>
-              </div>
-              <div class="info-row">
-                <span style="font-size:16px;">💳</span>
-                <span>學生：<span id="detail-fare-student" style="font-weight:700; color:#4a69bd;">--</span></span>
-              </div>
-              <div id="fare-hint" style="font-size: 11px; color: #888; margin-top: 8px; text-align: right;"></div>
             </div>
-          </div>
 
-          <div class="detail-actions">
-            <button class="action-btn btn-green" id="btn-reserve-board">🔔 上車提醒</button>
-            <button class="action-btn btn-outline-green" id="btn-reserve-alight">📍 下車提醒</button>
-          </div>
+            <div class="detail-actions">
+              <button class="action-btn btn-green" id="btn-reserve-board">🔔 上車提醒</button>
+              <button class="action-btn btn-outline-green" id="btn-reserve-alight">📍 下車提醒</button>
+            </div>
 
+          </div>
         </div>
       </section>
     </main>
@@ -701,7 +718,7 @@
   </div>
 
   <script type="module">
-    import { getFirestore, collection, getDocs, query, addDoc, deleteDoc, doc, onSnapshot } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
+    import { getFirestore, collection, getDocs, query, addDoc, deleteDoc, doc, onSnapshot, updateDoc } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js';
 
     const firebaseConfig = {
@@ -730,12 +747,15 @@
     let countdownTimer = null;
     const REFRESH_RATE_MS = 5000; 
 
+    // 【強制統一容錯率】確保畫圖示與印時間的判斷標準 100% 對齊
+    const ETA_TOLERANCE = -120;
+
     let allRoutesConfig = []; 
     let STOPS = [];
     let RESERVATIONS = [];
     let currentRouteFareData = null;
     let currentRouteStopsData = null; 
-    window.latestAICount = 0; // 儲存最新的 AI 偵測人數
+    window.latestAICount = 0;
 
     initDataFromStorage();
     updateWeather();
@@ -812,9 +832,7 @@
         if (!snapshot.empty) {
             snapshot.forEach(doc => {
               const data = doc.data();
-              let isAccessible = Math.random() < 0.3; 
-              if (data.name && data.name.toString().startsWith('1')) isAccessible = false;
-              allRoutesConfig.push({ id: doc.id, isAccessible: isAccessible, ...data });
+              allRoutesConfig.push({ id: doc.id, ...data });
             });
             allRoutesConfig.sort((a, b) => (a.name || "").localeCompare((b.name || ""), undefined, { numeric: true, sensitivity: 'base' }));
         }
@@ -861,23 +879,30 @@
         }
     }
 
+    function timeToMins(tStr) {
+        if(!tStr) return 0;
+        const [h,m] = tStr.split(':').map(Number);
+        return h * 60 + m;
+    }
+
     function processBusTime(busData) {
         if (!busData) return { status: 'unknown' };
         
-        if (busData.EstimateTime != null) { 
+        let isAcc = (busData.IsWheelchairAccessible === 1 || busData.WheelchairAccessible === 1);
+        
+        if (busData.EstimateTime !== undefined && busData.EstimateTime !== null) { 
              return { 
                  status: 'normal', 
                  time: Math.floor(busData.EstimateTime / 60), 
-                 plate: busData.PlateNumb || ''
+                 plate: busData.PlateNumb || '',
+                 isAccessible: isAcc
              };
         } else if (busData.NextBusTime) {
              const nextTime = new Date(busData.NextBusTime);
              const hours = nextTime.getHours().toString().padStart(2, '0');
              const mins = nextTime.getMinutes().toString().padStart(2, '0');
-             const now = new Date();
-             const diffMins = Math.floor((nextTime - now) / 60000);
              
-             return { status: 'schedule_calc', time: diffMins > 0 ? diffMins : 0, showTime: `${hours}:${mins}` };
+             return { status: 'schedule', timeStr: `${hours}:${mins}`, nextBusTime: busData.NextBusTime };
         } else {
              return { status: 'end' };
         }
@@ -932,61 +957,113 @@
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
-    async function getBusContext(routeName, stopName, destination, expectedPrev, expectedNext) {
+    async function getBusContext(routeName, stopName, destination) {
         const token = await getTDXToken();
         if(!token) return null; 
 
         try {
-            const url = `https://tdx.transportdata.tw/api/basic/v2/Bus/EstimatedTimeOfArrival/City/Taoyuan/${routeName}?%24format=JSON`;
+            const etaUrl = `https://tdx.transportdata.tw/api/basic/v2/Bus/EstimatedTimeOfArrival/City/Taoyuan/${routeName}?%24format=JSON`;
+            const schUrl = `https://tdx.transportdata.tw/api/basic/v2/Bus/Schedule/City/Taoyuan/${routeName}?%24format=JSON`;
             
-            const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
-            const data = await res.json();
+            const [etaRes, schRes] = await Promise.all([
+                fetch(etaUrl, { headers: { 'Authorization': `Bearer ${token}` } }),
+                fetch(schUrl, { headers: { 'Authorization': `Bearer ${token}` } }).catch(()=>null)
+            ]);
+            
+            const data = await etaRes.json();
+            let schData = [];
+            if (schRes && schRes.ok) schData = await schRes.json();
             
             const targetDest = destination.replace(/^往\s*/, '').trim();
             const stopKeywords = getAllStopKeywords(stopName);
             
+            let targetDir = -1;
             const dirs = { 0: [], 1: [] };
             data.forEach(d => {
                 if(d.Direction === 0 || d.Direction === 1) dirs[d.Direction].push(d);
             });
-
-            let targetDir = -1;
             for (let d in dirs) {
                 if (dirs[d].length > 0) {
                     dirs[d].sort((a, b) => a.StopSequence - b.StopSequence);
                     const lastStop = dirs[d][dirs[d].length - 1];
                     if (lastStop.StopName.Zh_tw.includes(targetDest) || (lastStop.DestinationStopNameZh && lastStop.DestinationStopNameZh.includes(targetDest))) {
-                        targetDir = parseInt(d);
-                        break;
+                        targetDir = parseInt(d); break;
                     }
                 }
             }
-            if (targetDir === -1) {
-                 if (dirs[0].length > 0) targetDir = 0;
-                 else if (dirs[1].length > 0) targetDir = 1;
-            }
-            let directionData = dirs[targetDir] || [];
-            directionData.sort((a, b) => a.StopSequence - b.StopSequence);
+            if (targetDir === -1) targetDir = dirs[0].length > 0 ? 0 : 1;
 
-            const current = directionData.find(d => isNameMatch(stopKeywords, d.StopName.Zh_tw));
-            
-            let prevData = null;
-            let nextData = null;
+            let directionETA = data.filter(d => d.Direction === targetDir);
+            let directionSCH = schData.filter(d => d.Direction === targetDir);
 
-            if (expectedPrev) {
-                const kws = getAllStopKeywords(expectedPrev);
-                prevData = directionData.find(d => isNameMatch(kws, d.StopName.Zh_tw));
+            let targetSubRouteUID = null;
+
+            const currentETA = directionETA.find(d => isNameMatch(stopKeywords, d.StopName.Zh_tw));
+            if (currentETA && currentETA.SubRouteUID) {
+                targetSubRouteUID = currentETA.SubRouteUID;
             }
-            
-            if (expectedNext) {
-                const kws = getAllStopKeywords(expectedNext);
-                nextData = directionData.find(d => isNameMatch(kws, d.StopName.Zh_tw));
+
+            let tripSchedule = null;
+            let allTrips = [];
+            directionSCH.forEach(sch => {
+                if (sch.Timetables) allTrips = allTrips.concat(sch.Timetables);
+            });
+
+            if (!targetSubRouteUID && allTrips.length > 0) {
+                const startStopETA = directionETA.find(d => isNameMatch(stopKeywords, d.StopName.Zh_tw) && d.NextBusTime);
+                if (startStopETA && startStopETA.NextBusTime) {
+                    const nbt = new Date(startStopETA.NextBusTime);
+                    const targetMins = nbt.getHours() * 60 + nbt.getMinutes();
+                    let bestDiff = Infinity;
+                    allTrips.forEach(t => {
+                        if (!t.StopTimes) return;
+                        const matchStop = t.StopTimes.find(st => isNameMatch(stopKeywords, st.StopName.Zh_tw));
+                        if (matchStop) {
+                            const arrMins = timeToMins(matchStop.ArrivalTime || matchStop.DepartureTime);
+                            const diff = Math.abs(arrMins - targetMins);
+                            if (diff < bestDiff && diff <= 5) {
+                                bestDiff = diff;
+                                tripSchedule = t;
+                            }
+                        }
+                    });
+                }
+                if (tripSchedule && tripSchedule.SubRouteUID) {
+                    targetSubRouteUID = tripSchedule.SubRouteUID;
+                }
             }
+
+            if (targetSubRouteUID) {
+                directionETA = directionETA.filter(d => d.SubRouteUID === targetSubRouteUID);
+                directionSCH = directionSCH.filter(d => d.SubRouteUID === targetSubRouteUID);
+            }
+
+            let stopSchedules = {};
+            directionSCH.forEach(sch => {
+                if (sch.Timetables) {
+                    sch.Timetables.forEach(t => {
+                        if (t.StopTimes) {
+                            t.StopTimes.forEach(st => {
+                                let sName = st.StopName.Zh_tw;
+                                if (!stopSchedules[sName]) stopSchedules[sName] = [];
+                                let time = st.ArrivalTime || st.DepartureTime;
+                                if (time) stopSchedules[sName].push(time);
+                            });
+                        }
+                    });
+                }
+            });
+            for (let s in stopSchedules) {
+                stopSchedules[s] = [...new Set(stopSchedules[s])].sort((a,b) => timeToMins(a) - timeToMins(b));
+            }
+
+            const currentFilteredETA = directionETA.find(d => isNameMatch(stopKeywords, d.StopName.Zh_tw));
 
             return {
-                current: processBusTime(current),
-                prev: expectedPrev ? (prevData ? { name: expectedPrev, ...processBusTime(prevData), seq: prevData.StopSequence } : { name: expectedPrev, status: 'unknown' }) : null,
-                next: expectedNext ? (nextData ? { name: expectedNext, ...processBusTime(nextData), seq: nextData.StopSequence } : { name: expectedNext, status: 'unknown' }) : null,
+                current: processBusTime(currentFilteredETA),
+                etaList: directionETA,
+                schList: stopSchedules,
+                scheduleTrip: tripSchedule,
                 targetDir: targetDir 
             };
         } catch(e) {
@@ -1195,8 +1272,34 @@
     }
     
     async function getRealBusArrival(routeName, stopName, destination) {
-        const ctx = await getBusContext(routeName, stopName, destination, null, null);
-        return ctx ? ctx.current : null;
+        const ctx = await getBusContext(routeName, stopName, destination);
+        if (!ctx) return null;
+        
+        const kws = getAllStopKeywords(stopName);
+        const stopETA = ctx.etaList.filter(d => isNameMatch(kws, d.StopName.Zh_tw));
+        
+        const live = stopETA.filter(d => d.EstimateTime !== undefined && d.EstimateTime !== null && d.EstimateTime >= ETA_TOLERANCE).sort((a,b)=>a.EstimateTime-b.EstimateTime);
+        if (live.length > 0) {
+            let isAcc = (live[0].IsWheelchairAccessible === 1 || live[0].WheelchairAccessible === 1);
+            return { status: 'normal', time: Math.floor(live[0].EstimateTime/60), plate: live[0].PlateNumb, isAccessible: isAcc };
+        }
+        
+        const nbt = stopETA.filter(d => d.NextBusTime).sort((a,b)=>new Date(a.NextBusTime) - new Date(b.NextBusTime));
+        if (nbt.length > 0) {
+            const dt = new Date(nbt[0].NextBusTime);
+            return { status: 'schedule', timeStr: dt.getHours().toString().padStart(2,'0')+':'+dt.getMinutes().toString().padStart(2,'0') };
+        }
+        
+        let schKey = Object.keys(ctx.schList).find(k => isNameMatch(kws, k));
+        if (schKey && ctx.schList[schKey]) {
+            const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
+            const nextSch = ctx.schList[schKey].find(t => timeToMins(t) >= nowMins - 2);
+            if (nextSch) {
+                return { status: 'schedule', timeStr: nextSch };
+            }
+        }
+        
+        return { status: 'end' };
     }
 
     async function renderHomePageBusList() {
@@ -1229,7 +1332,7 @@
 
           let isAccessible = false;
           if (arrivalMin && arrivalMin.status === 'normal') {
-              isAccessible = routeInfo ? routeInfo.isAccessible : false;
+              isAccessible = arrivalMin.isAccessible === true;
           }
 
           return { stop, busName, dest, isAccessible, arrivalMin };
@@ -1255,28 +1358,20 @@
             const min = res.arrivalMin.time;
             const isUrgent = min <= 3;
             circleClass = isUrgent ? "arrival-circle urgent" : "arrival-circle";
-            if (min <= 0) timeHTML = `進<span>站</span>`;
+            
+            if (min < 0) timeHTML = `已<span>離站</span>`;
+            else if (min === 0) timeHTML = `進<span>站</span>`;
             else timeHTML = `${min}<span>分</span>`;
             
             if(res.arrivalMin.plate) {
                 plateHtml = `<span class="bus-plate-badge">${res.arrivalMin.plate}</span>`;
             }
             
-        } else if (res.arrivalMin.status === 'schedule_calc') {
-            circleClass = "arrival-circle schedule"; 
-            if (res.arrivalMin.time <= 60) {
-                const min = res.arrivalMin.time;
-                timeHTML = `<span style="font-size:14px; font-weight:700; margin-top:3px;">${min}</span><span style="font-size:9px;">分(表定)</span>`;
-            } else {
-                timeHTML = `<span style="font-size:14px; font-weight:700; margin-top:3px; color:#d63031;">${res.arrivalMin.showTime}</span><span style="font-size:9px; color:#d63031; font-weight:bold;">下一班</span>`;
-            }
         } else if (res.arrivalMin.status === 'schedule') {
-            circleClass = "arrival-circle schedule";
-            timeHTML = `<span style="font-size:13px; font-weight:600;">${res.arrivalMin.time}</span><span>發車</span>`;
-        } else if (res.arrivalMin.status === 'end') {
-            timeHTML = `<span style="font-size:11px;">末班<br>已過</span>`;
+            circleClass = "arrival-circle schedule"; 
+            timeHTML = `<span style="font-size:14px; font-weight:700; margin-top:3px;">${res.arrivalMin.timeStr}</span><span style="font-size:9px;">表定</span>`;
         } else {
-            timeHTML = `<span style="font-size:11px;">今日<br>未發</span>`;
+            timeHTML = `<span style="font-size:11px;">未發車</span>`;
         }
 
         const accessibleHtml = res.isAccessible ? '<span class="icon-accessible" title="無障礙公車">♿</span>' : '';
@@ -1327,7 +1422,6 @@
     let pendingBusInfo = null;
     let pendingReservationType = null; 
 
-    // 【新增】將更新車況 UI 的邏輯獨立出來，讓 AI 連線時可以即時呼叫
     window.updateCrowdDisplay = function() {
        const crowdDot = document.getElementById("detail-crowd-dot");
        const crowdText = document.getElementById("detail-crowd-text");
@@ -1335,10 +1429,10 @@
 
        let count = window.latestAICount !== undefined ? window.latestAICount : 0;
        
-       if (count <= 15) { 
+       if (count <= 5) { 
            crowdDot.className = "dot green"; 
-           crowdText.innerHTML = ` 舒適 <span style="font-size:12px;color:#888;">(Edge AI 偵測站牌約 ${count} 人)</span>`; 
-       } else if (count <= 25) { 
+           crowdText.innerHTML = ` 暢通 <span style="font-size:12px;color:#888;">(Edge AI 偵測站牌約 ${count} 人)</span>`; 
+       } else if (count <= 15) { 
            crowdDot.className = "dot yellow"; 
            crowdText.innerHTML = ` 普通 <span style="font-size:12px;color:#888;">(Edge AI 偵測站牌約 ${count} 人)</span>`; 
        } else { 
@@ -1346,10 +1440,240 @@
            crowdText.innerHTML = ` 擁擠 <span style="font-size:12px;color:#888;">(Edge AI 偵測站牌約 ${count} 人)</span>`; 
        }
        
-       // 加入特效
        crowdText.classList.remove("count-updated");
-       void crowdText.offsetWidth; // 強制重繪
+       void crowdText.offsetWidth; 
        crowdText.classList.add("count-updated");
+    };
+
+    window.fetchAndRenderDetail = function(isInitial = false) {
+       if (!pendingBusInfo) return;
+       const busInfo = pendingBusInfo;
+
+       const btn = document.getElementById("btn-detail-refresh");
+       if(btn && !isInitial) { 
+           btn.classList.add("spinning"); 
+           setTimeout(() => btn.classList.remove("spinning"), 1000); 
+       }
+
+       const route = allRoutesConfig.find(r => r.id === busInfo.routeId);
+       let startIndex = -1;
+       
+       if (route && route.stops) {
+           startIndex = route.stops.indexOf(busInfo.stopName);
+           if (startIndex === -1) {
+               const myKeywords = getAllStopKeywords(busInfo.stopName);
+               startIndex = route.stops.findIndex(s => {
+                   const sKeywords = getAllStopKeywords(s);
+                   return sKeywords.some(k1 => myKeywords.some(k2 => k1.includes(k2) || k2.includes(k1)));
+               });
+           }
+       }
+       if (startIndex === -1) startIndex = 0; 
+       let currentSeqFirebase = startIndex + 1;
+
+       getBusContext(busInfo.name, busInfo.stopName, busInfo.dest).then(context => {
+           if (!context) return;
+           
+           document.getElementById("detail-current-stop").innerHTML = `所在站牌：${busInfo.stopName} <span style="font-size:12px; color:#888;">(第${currentSeqFirebase}站)</span>`;
+           
+           const statusBig = document.getElementById("detail-status-big");
+           const statusSub = document.getElementById("detail-status-sub");
+
+           const routeListContainer = document.getElementById("full-route-list");
+           const currentScroll = routeListContainer.scrollTop; 
+           routeListContainer.innerHTML = "";
+
+           let displayStops = (route && route.stops && route.stops.length > 0) 
+                               ? route.stops 
+                               : (context.etaList ? context.etaList.map(d => d.StopName.Zh_tw) : []);
+
+           if (displayStops.length > 0) {
+               
+               let targetPlate = (busInfo.busData && busInfo.busData.plate) ? busInfo.busData.plate : null;
+               
+               const isGlobalEnd = (busInfo.busData && busInfo.busData.status === 'end');
+               const currentStopIndex = displayStops.indexOf(busInfo.stopName);
+               
+               let activeBuses = {}; 
+               displayStops.forEach((sn, idx) => {
+                   const kws = getAllStopKeywords(sn);
+                   const stopDataList = context.etaList.filter(x => isNameMatch(kws, x.StopName.Zh_tw) && x.PlateNumb && x.EstimateTime !== undefined && x.EstimateTime !== null);
+                   
+                   stopDataList.forEach(d => {
+                       if (d.EstimateTime >= ETA_TOLERANCE) { 
+                           if (!activeBuses[d.PlateNumb] || d.EstimateTime < activeBuses[d.PlateNumb].minTime) {
+                               activeBuses[d.PlateNumb] = { minTime: d.EstimateTime, stopIndex: idx, subRouteUID: d.SubRouteUID };
+                           }
+                       }
+                   });
+               });
+
+               let stopBusesHtml = {};
+               for (let plate in activeBuses) {
+                   let sIdx = activeBuses[plate].stopIndex;
+                   if (!stopBusesHtml[sIdx]) stopBusesHtml[sIdx] = "";
+                   
+                   if (targetPlate && plate === targetPlate) {
+                       stopBusesHtml[sIdx] += `<span class="bus-live-icon" style="border-bottom: 3px solid var(--color-primary); padding-bottom:2px;" title="鎖定車輛: ${plate}">🚌</span>`;
+                   } else {
+                       stopBusesHtml[sIdx] += `<span class="bus-live-icon" title="車輛: ${plate}">🚌</span>`;
+                   }
+               }
+
+               let targetBusStopIndex = -1;
+               let targetSubRouteUID = null;
+               if (targetPlate && activeBuses[targetPlate]) {
+                   targetBusStopIndex = activeBuses[targetPlate].stopIndex;
+                   targetSubRouteUID = activeBuses[targetPlate].subRouteUID;
+               }
+
+               let activeRowElement = null;
+               let busTypeStr = (busInfo.isAccessible || (busInfo.busData && busInfo.busData.isAccessible)) ? "低底盤 (無障礙)" : "一般公車";
+
+               displayStops.forEach((stopName, idx) => {
+                   const stopKeywords = getAllStopKeywords(stopName);
+                   
+                   let allDataForThisStop = context.etaList.filter(d => isNameMatch(stopKeywords, d.StopName.Zh_tw));
+                   if (targetSubRouteUID) {
+                       const sameSubRouteData = allDataForThisStop.filter(d => d.SubRouteUID === targetSubRouteUID);
+                       if (sameSubRouteData.length > 0) allDataForThisStop = sameSubRouteData;
+                   }
+                   
+                   let timeText = "--";
+                   let timeClass = "route-stop-time grey";
+                   let tdxStopData = null;
+                   let isTimeSchedule = false;
+
+                   const isPassed = (targetPlate && targetBusStopIndex !== -1 && idx < targetBusStopIndex);
+
+                   if (isPassed) {
+                       timeText = "已離站";
+                   } else {
+                       let stopETAs = allDataForThisStop.filter(d => d.EstimateTime !== undefined && d.EstimateTime !== null && d.EstimateTime >= ETA_TOLERANCE);
+                       
+                       if (targetPlate) {
+                           tdxStopData = stopETAs.find(d => d.PlateNumb === targetPlate);
+                       } else if (stopETAs.length > 0) {
+                           stopETAs.sort((a,b) => a.EstimateTime - b.EstimateTime);
+                           tdxStopData = stopETAs[0];
+                       }
+
+                       if (tdxStopData) {
+                           const mins = Math.floor(tdxStopData.EstimateTime / 60);
+                           if (mins < 0) { timeText = "已離站"; } 
+                           else if (mins === 0) { timeText = "進站中"; timeClass = "route-stop-time alert"; } 
+                           else { timeText = mins + "分"; timeClass = mins <= 3 ? "route-stop-time alert" : "route-stop-time"; }
+                       } else {
+                           if (targetPlate) {
+                               timeText = "--"; 
+                           } else if (isGlobalEnd) {
+                               timeText = idx < currentStopIndex ? "已離站" : "末班已過";
+                           } else {
+                               let schKey = Object.keys(context.schList).find(k => isNameMatch(stopKeywords, k));
+                               let nextTime = null;
+                               
+                               if (schKey && context.schList[schKey]) {
+                                   const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
+                                   nextTime = context.schList[schKey].find(t => timeToMins(t) >= nowMins - 2);
+                               }
+                               
+                               if (!nextTime) {
+                                   let nbtData = allDataForThisStop.find(d => d.NextBusTime);
+                                   if (nbtData) {
+                                       const dt = new Date(nbtData.NextBusTime);
+                                       nextTime = dt.getHours().toString().padStart(2, '0') + ":" + dt.getMinutes().toString().padStart(2, '0');
+                                   }
+                               }
+
+                               if (nextTime) {
+                                   timeText = nextTime;
+                                   isTimeSchedule = true;
+                               } else {
+                                   if (Object.keys(activeBuses).length === 0) {
+                                       timeText = "末班已過";
+                                   } else {
+                                       timeText = "--";
+                                   }
+                               }
+                           }
+                       }
+                   }
+
+                   let busIcon = stopBusesHtml[idx] || "";
+                   const isActive = (stopName === busInfo.stopName);
+                   
+                   if (isActive) {
+                       if (tdxStopData && (tdxStopData.IsWheelchairAccessible === 1 || tdxStopData.WheelchairAccessible === 1)) {
+                           busTypeStr = "低底盤 (無障礙)";
+                       }
+
+                       if (isGlobalEnd) {
+                           statusBig.textContent = "末班已過";
+                           statusBig.className = "detail-status-big status-blue";
+                           statusSub.textContent = "今日已無班次";
+                       } else if (isTimeSchedule) {
+                           statusBig.textContent = `${timeText} 發車`;
+                           statusBig.className = "detail-status-big status-blue";
+                           statusSub.textContent = `表定時刻`;
+                           
+                           const [hh, mm] = timeText.split(':');
+                           const d = new Date(); d.setHours(parseInt(hh), parseInt(mm), 0, 0);
+                           pendingBusInfo.busData = { status: 'schedule', timeStr: timeText, nextBusTime: d.toISOString() };
+                       } else if (timeText === "已離站") {
+                           statusBig.textContent = "已離站";
+                           statusBig.className = "detail-status-big status-blue";
+                           statusSub.textContent = "車輛已駛離本站";
+                       } else if (timeText === "--" || timeText === "未發車") {
+                           statusBig.textContent = "未發車";
+                           statusBig.className = "detail-status-big status-blue";
+                           statusSub.textContent = "官方目前無動態或時刻";
+                       } else {
+                           if (timeText === "進站中") {
+                               statusBig.textContent = "進站中"; 
+                               statusBig.className = "detail-status-big status-alert"; 
+                               statusSub.textContent = tdxStopData && tdxStopData.PlateNumb ? `請準備上車 (車號: ${tdxStopData.PlateNumb})` : `請準備上車`;
+                           } else {
+                               statusBig.textContent = timeText; 
+                               statusBig.className = "detail-status-big status-ok"; 
+                               statusSub.textContent = tdxStopData && tdxStopData.PlateNumb ? `預計抵達 (車號: ${tdxStopData.PlateNumb})` : `預計抵達`;
+                           }
+                           if (tdxStopData && tdxStopData.PlateNumb && !targetPlate && timeText !== "已離站" && timeText !== "--") {
+                               targetPlate = tdxStopData.PlateNumb;
+                               pendingBusInfo.busData = { status: 'normal', time: parseInt(timeText), plate: targetPlate };
+                           }
+                       }
+                   }
+
+                   const row = document.createElement("div");
+                   row.className = "route-stop-row" + (isActive ? " active" : "");
+                   
+                   const nameHtml = isActive ? `<span style="background:#e8f6f3; padding:2px 8px; border-radius:10px; color:var(--color-primary-dark); font-weight:bold;">${stopName}</span>` : stopName;
+
+                   row.innerHTML = `
+                       <div class="route-bus-icon">${busIcon}</div>
+                       <div class="route-stop-dot"></div>
+                       <div class="route-stop-name">${nameHtml}</div>
+                       <div class="${timeClass}">${timeText}</div>
+                   `;
+                   routeListContainer.appendChild(row);
+
+                   if (isActive) activeRowElement = row;
+               });
+
+               if (isInitial && activeRowElement) {
+                   setTimeout(() => {
+                       activeRowElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                   }, 100);
+               } else {
+                   routeListContainer.scrollTop = currentScroll;
+               }
+               
+               document.getElementById("detail-bus-type").textContent = busTypeStr;
+
+           } else {
+               routeListContainer.innerHTML = "<div style='padding:20px;text-align:center;'>無法載入路線資料</div>";
+           }
+       });
     };
 
     window.openDecisionFor = function(busInfo) {
@@ -1364,7 +1688,8 @@
        destSelect.innerHTML = "<option value=''>載入中...</option>";
        destSelect.disabled = true;
 
-       // 開啟詳細頁面時，立刻更新一次 AI 數據
+       document.getElementById("full-route-list").innerHTML = "<div style='padding:30px; text-align:center; color:#888;'>載入中...</div>";
+
        window.updateCrowdDisplay();
        
        const route = allRoutesConfig.find(r => r.id === busInfo.routeId);
@@ -1403,46 +1728,7 @@
 
        updateFareDisplay(busInfo.stopName, destSelect.value, "init", null); 
 
-       let expectedPrev = null;
-       let expectedNext = null;
-       let currentSeqFirebase = startIndex + 1;
-
-       if (route && route.stops) {
-           if (startIndex > 0) expectedPrev = route.stops[startIndex - 1];
-           if (startIndex < route.stops.length - 1) expectedNext = route.stops[startIndex + 1];
-       }
-
-       getBusContext(busInfo.name, busInfo.stopName, busInfo.dest, expectedPrev, expectedNext).then(context => {
-           let data = context ? context.current : { status: 'unknown' };
-           
-           if (context) {
-               document.getElementById("detail-current-stop").innerHTML = `所在站牌：${busInfo.stopName} <span style="font-size:12px; color:#888;">(第${currentSeqFirebase}站)</span>`;
-           }
-           
-           pendingBusInfo.busData = data; 
-           
-           const statusBig = document.getElementById("detail-status-big");
-           const statusSub = document.getElementById("detail-status-sub");
-
-           if (!data || data.status === 'unknown') {
-               statusBig.textContent = "無法取得"; statusSub.textContent = "請確認網路連線";
-           } else if (data.status === 'normal') {
-               const min = data.time;
-               if (min <= 0) {
-                   statusBig.textContent = "進站中"; statusBig.className = "detail-status-big status-alert"; statusSub.textContent = `請準備上車 (車號: ${data.plate})`;
-               } else {
-                   statusBig.textContent = `${min} 分鐘`; statusBig.className = "detail-status-big status-ok"; statusSub.textContent = `預計抵達 (車號: ${data.plate})`;
-               }
-           } else if (data.status === 'schedule_calc') {
-               statusBig.textContent = `${data.showTime} 發車`; statusBig.className = "detail-status-big status-blue"; statusSub.textContent = `表定時間 (約 ${data.time} 分鐘後)`;
-           } else {
-               statusBig.textContent = "末班已過"; statusSub.textContent = "今日已無班次";
-           }
-
-           updateNeighborUI("prev", context ? context.prev : null);
-           updateNeighborUI("next", context ? context.next : null);
-           document.getElementById("detail-bus-type").textContent = busInfo.isAccessible ? "低底盤 (無障礙)" : "一般公車";
-       });
+       window.fetchAndRenderDetail(true);
        
        Promise.all([
            getBusFareRaw(busInfo.name),
@@ -1460,36 +1746,9 @@
        };
     };
 
-    function updateNeighborUI(prefix, data) {
-        const nameEl = document.getElementById(`${prefix}-stop-name`);
-        const timeEl = document.getElementById(`${prefix}-stop-time`);
-        
-        if (!data) {
-            nameEl.innerHTML = `<span style="color:#aaa;">${prefix === 'prev' ? "🚫 無上一站 (起點站)" : "🚫 無下一站 (終點站)"}</span>`;
-            timeEl.textContent = "--"; 
-            timeEl.className = "neighbor-time grey"; 
-            return;
-        }
-
-        nameEl.innerHTML = `${data.name}`;
-        
-        if (data.status === 'normal') {
-            if (data.time < 0) {
-                timeEl.textContent = "已離站";
-                timeEl.className = "neighbor-time grey";
-            } else {
-                const min = data.time;
-                timeEl.textContent = min <= 0 ? "進站中" : `${min}分`;
-                timeEl.className = "neighbor-time";
-            }
-        } else if (data.status === 'schedule_calc' || data.status === 'schedule') {
-            timeEl.textContent = `約 ${data.time} 分`;
-            timeEl.className = "neighbor-time grey";
-        } else {
-            timeEl.textContent = "--";
-            timeEl.className = "neighbor-time grey";
-        }
-    }
+    document.getElementById("btn-detail-refresh").addEventListener("click", () => {
+        window.fetchAndRenderDetail(false);
+    });
 
     window.updateFoodStopSelect = function() {
         const select = document.getElementById("food-stop-select");
@@ -1506,6 +1765,38 @@
         });
         select.onchange = () => { const stopName = select.value; if(stopName) searchFood(stopName); };
     };
+
+    // =========================================================
+    // 【極速零延遲導航技術】完全拔除等待，瞬間叫出 Google Maps
+    // =========================================================
+    const openMapLink = (base64Str, params) => {
+        const baseUrl = atob(base64Str);
+        const url = baseUrl + params;
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    };
+
+    document.getElementById("btn-plan-route").addEventListener("click", () => {
+        const dest = document.getElementById("destInput").value.trim();
+        if (!dest) { alert("請輸入目的地！"); return; }
+        
+        // 只要把終點丟給 Google Maps，它預設就會自動使用設備的現在位置當作起點！
+        // 這樣可以省下 3 秒鐘的 GPS 定位等待時間，瞬間開啟地圖。
+        const dirApiBase64 = "aHR0cHM6Ly93d3cuZ29vZ2xlLmNvbS9tYXBzL2Rpci8/YXBpPTE=";
+        const finalUrl = atob(dirApiBase64) + "&destination=" + encodeURIComponent(dest) + "&travelmode=transit";
+        
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        if (isIOS) {
+            window.location.href = finalUrl;
+        } else {
+            openMapLink(dirApiBase64, "&destination=" + encodeURIComponent(dest) + "&travelmode=transit");
+        }
+    });
 
     function searchFood(stopName) {
         const container = document.getElementById("food-list-container");
@@ -1529,22 +1820,25 @@
                         item.className = "food-item";
                         item.innerHTML = `<div class="food-img" style="background-image: url('${photoUrl}')"></div><div class="food-info"><h4>${place.name}</h4><div class="food-meta">⭐ ${place.rating || '無'} · ${place.formatted_address}</div></div>`;
                         
-                        // iOS/Android 雙平台地圖跳轉邏輯
                         item.addEventListener("click", () => { 
+                            const searchApiBase64 = "aHR0cHM6Ly93d3cuZ29vZ2xlLmNvbS9tYXBzL3NlYXJjaC8/YXBpPTE=";
+                            const finalUrl = atob(searchApiBase64) + "&query=" + encodeURIComponent(place.name + " " + place.formatted_address);
+                            
                             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-                            const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + " " + place.formatted_address)}`;
-                            if (isIOS) window.location.href = url;
-                            else window.open(url, '_blank');
+                            if (isIOS) window.location.href = finalUrl;
+                            else openMapLink(searchApiBase64, "&query=" + encodeURIComponent(place.name + " " + place.formatted_address));
                         });
                         
                         container.appendChild(item);
                     });
                 } else {
-                    container.innerHTML = `<div style="padding:30px 10px;text-align:center;">找不到結果。<br><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stopName + ' 美食')}" target="_blank" style="color:#00b894; font-weight:bold;">👉 點此直接開啟 Google 地圖搜尋</a></div>`;
+                    const fallbackUrl = atob("aHR0cHM6Ly93d3cuZ29vZ2xlLmNvbS9tYXBzL3NlYXJjaC8/YXBpPTE=") + "&query=" + encodeURIComponent(stopName + ' 美食');
+                    container.innerHTML = `<div style="padding:30px 10px;text-align:center;">找不到結果。<br><a href="${fallbackUrl}" target="_blank" style="color:#00b894; font-weight:bold;">👉 點此直接開啟 Google 地圖搜尋</a></div>`;
                 }
             });
         } catch(e) {
-             container.innerHTML = `<div style="padding:30px 10px;text-align:center;">無法載入 API。<br><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stopName + ' 美食')}" target="_blank" style="color:#00b894; font-weight:bold;">👉 點此直接開啟 Google 地圖搜尋</a></div>`;
+             const fallbackUrl = atob("aHR0cHM6Ly93d3cuZ29vZ2xlLmNvbS9tYXBzL3NlYXJjaC8/YXBpPTE=") + "&query=" + encodeURIComponent(stopName + ' 美食');
+             container.innerHTML = `<div style="padding:30px 10px;text-align:center;">無法載入 API。<br><a href="${fallbackUrl}" target="_blank" style="color:#00b894; font-weight:bold;">👉 點此直接開啟 Google 地圖搜尋</a></div>`;
         }
     }
 
@@ -1554,11 +1848,17 @@
 
     document.getElementById("btn-reserve-board").addEventListener("click", () => {
         pendingReservationType = 'boarding';
-        let mins = 0;
-        if (pendingBusInfo.busData && (pendingBusInfo.busData.status === 'normal' || pendingBusInfo.busData.status === 'schedule_calc')) {
-            mins = pendingBusInfo.busData.time;
+        let estTimeStr = "未知";
+        if (pendingBusInfo.busData && pendingBusInfo.busData.status === 'normal') {
+            let t = pendingBusInfo.busData.time;
+            if (t < 0) t = 0;
+            let d = new Date(Date.now() + t * 60000);
+            estTimeStr = d.getHours().toString().padStart(2, '0') + ":" + d.getMinutes().toString().padStart(2, '0');
+        } else if (pendingBusInfo.busData && pendingBusInfo.busData.status === 'schedule') {
+            let d = new Date(pendingBusInfo.busData.nextBusTime);
+            estTimeStr = d.getHours().toString().padStart(2, '0') + ":" + d.getMinutes().toString().padStart(2, '0');
         }
-        document.getElementById("reserve-msg").innerText = `已設定「上車提醒」。\n所在站牌：${pendingBusInfo.stopName}\n預計約 ${mins} 分鐘後進站`;
+        document.getElementById("reserve-msg").innerText = `已設定「上車提醒」。\n所在站牌：${pendingBusInfo.stopName}\n預計 ${estTimeStr} 進站`;
         reserveOverlay.style.display = "flex";
     });
 
@@ -1608,25 +1908,31 @@
 
         const selectedOption = select.options[select.selectedIndex];
         const distanceIndex = selectedOption ? parseInt(selectedOption.dataset.distance || 1) : 1;
+        let travelMins = distanceIndex * 2;
         
-        const travelMins = distanceIndex * 2;
-        
-        let boardMins = 0;
-        if (pendingBusInfo.busData && (pendingBusInfo.busData.status === 'normal' || pendingBusInfo.busData.status === 'schedule_calc')) {
-            boardMins = pendingBusInfo.busData.time;
+        let boardTimeMs = Date.now();
+        if (pendingBusInfo.busData) {
+            if (pendingBusInfo.busData.status === 'normal') {
+                let t = pendingBusInfo.busData.time;
+                if (t < 0) t = 0;
+                boardTimeMs += t * 60000;
+            } else if (pendingBusInfo.busData.status === 'schedule') {
+                boardTimeMs = new Date(pendingBusInfo.busData.nextBusTime).getTime();
+            }
         }
-        if (boardMins < 0) boardMins = 0;
 
-        const estimatedMinutes = boardMins + travelMins;
+        const estimatedArrivalMs = boardTimeMs + (travelMins * 60000);
+        const estDate = new Date(estimatedArrivalMs);
+        const estTimeStr = estDate.getHours().toString().padStart(2, '0') + ":" + estDate.getMinutes().toString().padStart(2, '0');
 
         pendingBusInfo.alightStop = stopName;
-        pendingBusInfo.travelTime = estimatedMinutes; 
+        pendingBusInfo.travelTimeMs = estimatedArrivalMs; 
 
         confirmBtn.innerText = "計算並設定";
         confirmBtn.disabled = false;
 
         alightStopModal.style.display = "none";
-        document.getElementById("reserve-msg").innerText = `已設定「下車提醒」。\n目的地：${stopName}\n預計約 ${estimatedMinutes} 分鐘後抵達`;
+        document.getElementById("reserve-msg").innerText = `已設定「下車提醒」。\n目的地：${stopName}\n預計 ${estTimeStr} 抵達`;
         reserveOverlay.style.display = "flex";
     });
 
@@ -1636,40 +1942,30 @@
     
     document.getElementById("btn-modal-ok").addEventListener("click", async () => {
         if(pendingBusInfo && pendingReservationType) {
-            const now = new Date();
-            const timeStr = now.getHours() + ":" + (now.getMinutes()<10?'0':'') + now.getMinutes();
-            
             let targetTime = 0;
-            let displayMin = 0;
             let destText = pendingBusInfo.dest;
 
-            let baseArrivalMin = 0; 
-            if (pendingBusInfo.busData && (pendingBusInfo.busData.status === 'normal' || pendingBusInfo.busData.status === 'schedule_calc')) {
-                baseArrivalMin = pendingBusInfo.busData.time;
-            }
-            if(baseArrivalMin <= 0) baseArrivalMin = 0;
-
             if (pendingReservationType === 'boarding') {
-                let arrivalMs = baseArrivalMin * 60 * 1000;
-                if (baseArrivalMin <= 0) arrivalMs = 10000; 
-                targetTime = Date.now() + arrivalMs;
-                displayMin = baseArrivalMin;
+                if (pendingBusInfo.busData.status === 'normal') {
+                    let t = pendingBusInfo.busData.time;
+                    if (t <= 0) t = 0.16; 
+                    targetTime = Date.now() + t * 60000;
+                } else if (pendingBusInfo.busData.status === 'schedule') {
+                    targetTime = new Date(pendingBusInfo.busData.nextBusTime).getTime();
+                } else {
+                    targetTime = Date.now() + 60000;
+                }
             } else {
-                const minutesUntilAlight = pendingBusInfo.travelTime || 0;
                 if (pendingBusInfo.alightStop) destText = pendingBusInfo.alightStop; 
-
-                targetTime = Date.now() + (minutesUntilAlight * 60 * 1000);
-                displayMin = minutesUntilAlight;
+                targetTime = pendingBusInfo.travelTimeMs;
             }
 
             const newRes = {
                id: Date.now(),
                type: pendingReservationType, 
-               time: timeStr,
                bus: pendingBusInfo.name,
                dest: destText,
                stopName: pendingBusInfo.stopName, 
-               arrival: displayMin, 
                targetTime: targetTime,
                notified: false
             };
@@ -1703,6 +1999,11 @@
                     showNotification(res);
                     res.notified = true;
                     hasUpdate = true;
+                    
+                    if (res.fbId && db) {
+                        updateDoc(doc(db, 'reservations', res.fbId), { notified: true })
+                            .catch(err => console.error("更新預約狀態失敗:", err));
+                    }
                 }
             });
             if (hasUpdate) {
@@ -1752,8 +2053,10 @@
                 const typeText = res.type === 'boarding' ? "上車" : "下車";
                 const typeColor = res.type === 'boarding' ? "#4a69bd" : "#e67e22";
 
-                const minutesLeft = Math.max(0, Math.ceil((res.targetTime - Date.now()) / 60000));
-                const timeLeftText = res.notified ? "已結束" : `還有約 ${minutesLeft} 分鐘`;
+                const tDate = new Date(res.targetTime);
+                const hh = tDate.getHours().toString().padStart(2, '0');
+                const mm = tDate.getMinutes().toString().padStart(2, '0');
+                const timeLeftText = res.notified ? "已結束" : `預計 ${hh}:${mm} 到達`;
 
                 card.innerHTML = `
                    <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;">
@@ -1762,7 +2065,7 @@
                    </div>
                    <div style="font-size:15px; font-weight:700;">${res.bus} <span style="font-weight:400; font-size:12px;">往 ${res.dest}</span></div>
                    <div style="font-size:12px; color:#666; margin-top:4px;">${timeLeftText}</div>
-                   <button style="width:100%; border:none; background:#eee; padding:4px; margin-top:8px; border-radius:4px; font-size:12px; color:#666;" onclick="deleteRes(${res.id}, '${res.fbId}')">刪除</button>
+                   <button style="width:100%; border:none; background:#eee; padding:4px; margin-top:8px; border-radius:4px; font-size:12px; color:#666;" onclick="deleteRes('${res.fbId}')">刪除</button>
                 `;
                 
                 if (res.type === 'boarding') boardEl.appendChild(card);
@@ -1774,7 +2077,7 @@
         }
     }
     
-    window.deleteRes = async function(id, fbId) {
+    window.deleteRes = async function(fbId) {
         if (fbId) {
             try {
                 await deleteDoc(doc(db, 'reservations', fbId));
@@ -1782,20 +2085,16 @@
                 console.error("刪除預約失敗:", err);
             }
         }
-        RESERVATIONS = RESERVATIONS.filter(r => r.id !== id);
+        RESERVATIONS = RESERVATIONS.filter(r => r.fbId !== fbId);
         renderReservationsList();
     };
 
-    // ==========================================
-    // 【重要連動】從 Firebase 取得 AI 人數，並動態更新「詳細資訊」畫面
-    // ==========================================
     function listenToEdgeAI() {
         if(db) {
             onSnapshot(doc(db, "stops_realtime", "stop_A"), (docSnap) => {
                 if(docSnap.exists()) {
                     const count = docSnap.data().count || 0;
                     window.latestAICount = count; 
-                    // 如果目前正在看詳細資訊畫面，立刻更新 UI
                     window.updateCrowdDisplay();
                 }
             }, (error) => {
@@ -1805,9 +2104,6 @@
     }
     setTimeout(() => { listenToEdgeAI(); }, 1000);
 
-    // ==========================================
-    // 節能優化：加入 Page Visibility API
-    // ==========================================
     function startAutoRefresh() {
         stopAutoRefresh(); 
         let timeLeft = REFRESH_RATE_MS / 1000;
@@ -1824,12 +2120,19 @@
 
         refreshTimer = setInterval(() => {
             if (document.visibilityState === 'visible') { 
-                const btn = document.getElementById("btn-manual-refresh");
-                if(btn) {
-                    btn.classList.add("spinning");
-                    setTimeout(() => btn.classList.remove("spinning"), 1000);
+                if (document.getElementById('home-screen').classList.contains('active')) {
+                    const btn = document.getElementById("btn-manual-refresh");
+                    if(btn) {
+                        btn.classList.add("spinning");
+                        setTimeout(() => btn.classList.remove("spinning"), 1000);
+                    }
+                    renderHomePageBusList();
                 }
-                renderHomePageBusList();
+                else if (document.getElementById('detail-screen').classList.contains('active')) {
+                    if (window.fetchAndRenderDetail) {
+                        window.fetchAndRenderDetail(false); 
+                    }
+                }
             }
         }, REFRESH_RATE_MS);
     }
@@ -1863,41 +2166,21 @@
     function setActiveScreen(id) {
       document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
       document.getElementById(id).classList.add("active");
+      
+      const topBg = document.querySelector('.app-top-bg');
+      if (topBg) {
+          if (id === 'detail-screen') {
+              topBg.style.height = '112px'; 
+          } else {
+              topBg.style.height = '145px'; 
+          }
+      }
     }
     function setActiveNav(id) {
       document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
       const btn = document.querySelector(`.nav-btn[data-target="${id}"]`);
       if(btn) btn.classList.add("active");
     }
-
-    // 規劃路線 iOS 跳轉修復
-    document.getElementById("btn-plan-route").addEventListener("click", () => {
-        const dest = document.getElementById("destInput").value.trim();
-        if (!dest) { alert("請輸入目的地！"); return; }
-        
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                (p) => {
-                    const lat = p.coords.latitude;
-                    const lon = p.coords.longitude;
-                    const url = `https://www.google.com/maps/dir/?api=1&origin=${lat},${lon}&destination=${encodeURIComponent(dest)}&travelmode=transit`;
-                    
-                    if (isIOS) window.location.href = url;
-                    else window.open(url, '_blank');
-                },
-                () => {
-                    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}&travelmode=transit`;
-                    
-                    if (isIOS) window.location.href = url;
-                    else window.open(url, '_blank');
-                }
-            );
-        } else {
-            alert("瀏覽器不支援定位");
-        }
-    });
 
     window.goToHome = function() {
       const welcomeScreen = document.getElementById("welcome-screen");
@@ -1999,15 +2282,7 @@
         const badgeHtml = routeName ? `<span style="background:var(--color-primary); color:white; padding:2px 6px; border-radius:4px; font-size:12px; margin-right:6px; font-weight:700;">${routeName}</span>` : '';
         const card = document.createElement("div");
         card.className = "stop-card card";
-        
-        // 修正：徹底移除常用站牌清單的無障礙標示，因為這裡只是靜態路線，不代表實體公車狀況
-        card.innerHTML = `
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div style="font-weight:600; font-size:15px; display:flex; align-items:center;">${badgeHtml} ${stop.name}</div>
-            <button class="chip-btn" style="background:#ffe6e6;color:red;" onclick="removeStop(${stop.id})">刪除</button>
-          </div>
-          <div style="font-size:12px; color:#666; margin-top:4px; padding-left: 2px;">${stop.direction}</div>
-        `;
+        card.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center;"><div style="font-weight:600; font-size:15px; display:flex; align-items:center;">${badgeHtml} ${stop.name}</div><button class="chip-btn" style="background:#ffe6e6;color:red;" onclick="removeStop(${stop.id})">刪除</button></div><div style="font-size:12px; color:#666; margin-top:4px; padding-left: 2px;">${stop.direction}</div>`;
         stopsListEl.appendChild(card);
       });
     }
