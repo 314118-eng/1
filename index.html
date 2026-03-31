@@ -140,7 +140,6 @@
         animation: spin 1s linear infinite;
     }
 
-    /* 骨架屏動畫 */
     .skeleton {
       background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
       background-size: 200% 100%;
@@ -548,7 +547,7 @@
                 <span style="font-size: 18px; color: var(--color-secondary);">📍</span>
               </div>
               <div style="flex-grow: 1;">
-                <input type="text" placeholder="您的位置 (自動偵測)" readonly style="width: 100%; padding: 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 5px; font-size: 14px; background-color: #f9f9f9; color: var(--color-text-soft);"/>
+                <input id="originInput" type="text" placeholder="您的位置 (GPS 尋找中...)" readonly style="width: 100%; padding: 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 5px; font-size: 14px; background-color: #f9f9f9; color: var(--color-text-soft); font-weight: 600;"/>
                 <input id="destInput" type="text" placeholder="請輸入目的地 (例如: 桃園火車站)" style="width: 100%; padding: 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 14px; background-color: var(--color-surface);"/>
               </div>
             </div>
@@ -557,7 +556,7 @@
             </button>
           </div>
           <div style="padding: 15px; color: #666; font-size: 13px; line-height: 1.5;">
-             說明：點擊按鈕將開啟您的 Google 地圖 APP，自動帶入目前的定位作為起點。
+             說明：點擊按鈕將 0 秒瞬間跳轉開啟您的 Google 地圖 APP。
           </div>
         </section>
       </section>
@@ -745,8 +744,6 @@
     let refreshTimer = null;
     let countdownTimer = null;
     const REFRESH_RATE_MS = 5000; 
-
-    // 【強制統一容錯率】確保畫圖示與印時間的判斷標準 100% 對齊
     const ETA_TOLERANCE = -120;
 
     let allRoutesConfig = []; 
@@ -755,9 +752,13 @@
     let currentRouteFareData = null;
     let currentRouteStopsData = null; 
     window.latestAICount = 0;
+    
+    // 【新增】全域 GPS 快取
+    window.userLat = null;
+    window.userLon = null;
 
     initDataFromStorage();
-    updateWeather();
+    updateWeather(); // 會同時獲取並快取 GPS
     
     setTimeout(() => {
         startAutoRedirect();
@@ -1421,6 +1422,7 @@
     let pendingBusInfo = null;
     let pendingReservationType = null; 
 
+    // AI 人流判斷邏輯
     window.updateCrowdDisplay = function() {
        const crowdDot = document.getElementById("detail-crowd-dot");
        const crowdText = document.getElementById("detail-crowd-text");
@@ -1428,11 +1430,10 @@
 
        let count = window.latestAICount !== undefined ? window.latestAICount : 0;
        
-       // 【更新】使用全新舒適度區間判斷邏輯
-       if (count < 15) { 
+       if (count <= 15) { 
            crowdDot.className = "dot green"; 
            crowdText.innerHTML = ` 舒適 <span style="font-size:12px;color:#888;">(Edge AI 偵測站牌約 ${count} 人)</span>`; 
-       } else if (count < 30) { 
+       } else if (count <= 30) { 
            crowdDot.className = "dot yellow"; 
            crowdText.innerHTML = ` 普通 <span style="font-size:12px;color:#888;">(Edge AI 偵測站牌約 ${count} 人)</span>`; 
        } else { 
@@ -1767,7 +1768,7 @@
     };
 
     // =========================================================
-    // 【100% 絕對防禦版】Base64 解碼跳轉，徹底封殺平台的網址攔截
+    // 【終極 0 秒延遲版】完全拔除等待，瞬間叫出 Google Maps
     // =========================================================
     const openMapLink = (base64Str, params) => {
         const baseUrl = atob(base64Str);
@@ -1780,6 +1781,32 @@
         a.click();
         document.body.removeChild(a);
     };
+
+    document.getElementById("btn-plan-route").addEventListener("click", () => {
+        const dest = document.getElementById("destInput").value.trim();
+        if (!dest) { alert("請輸入目的地！"); return; }
+        
+        // 【核心修改】：不讓網頁去抓 GPS！
+        // 我們直接將終點丟給 Google Maps，Google Maps App 開啟時自然會使用系統權限帶入「我的位置」。
+        // 這樣可以達到「零延遲」瞬間跳轉，100% 避開蘋果 Safari 對於非同步操作的廣告阻擋！
+        const dirApiBase64 = "aHR0cHM6Ly93d3cuZ29vZ2xlLmNvbS9tYXBzL2Rpci8/YXBpPTE=";
+        
+        let params = "&destination=" + encodeURIComponent(dest) + "&travelmode=transit";
+        
+        // 如果背景天氣元件有幸運抓到精準坐標，我們就順便帶上。沒抓到也沒差，交給地圖去抓！
+        if (window.userLat && window.userLon) {
+            params += "&origin=" + window.userLat + "," + window.userLon;
+        }
+
+        const finalUrl = atob(dirApiBase64) + params;
+        
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        if (isIOS) {
+            window.location.href = finalUrl;
+        } else {
+            openMapLink(dirApiBase64, params);
+        }
+    });
 
     function searchFood(stopName) {
         const container = document.getElementById("food-list-container");
@@ -2165,24 +2192,6 @@
       if(btn) btn.classList.add("active");
     }
 
-    // =========================================================
-    // 【極速零延遲導航技術】只帶目的地，讓系統瞬間觸發跳轉，打破 iPad 阻擋
-    // =========================================================
-    document.getElementById("btn-plan-route").addEventListener("click", () => {
-        const dest = document.getElementById("destInput").value.trim();
-        if (!dest) { alert("請輸入目的地！"); return; }
-        
-        const dirApiBase64 = "aHR0cHM6Ly93d3cuZ29vZ2xlLmNvbS9tYXBzL2Rpci8/YXBpPTE=";
-        const finalUrl = atob(dirApiBase64) + "&destination=" + encodeURIComponent(dest) + "&travelmode=transit";
-        
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-        if (isIOS) {
-            window.location.href = finalUrl;
-        } else {
-            openMapLink(dirApiBase64, "&destination=" + encodeURIComponent(dest) + "&travelmode=transit");
-        }
-    });
-
     window.goToHome = function() {
       const welcomeScreen = document.getElementById("welcome-screen");
       if (welcomeScreen.classList.contains("active")) {
@@ -2300,6 +2309,7 @@
        startAutoRefresh(); 
     });
     
+    // 【更新】將天氣取得的精準座標存起來給路線規劃用
     function updateWeather() {
         const headerWeatherEl = document.getElementById("header-weather");
         const homeWeatherEl = document.getElementById("weather-text");
@@ -2309,6 +2319,17 @@
             navigator.geolocation.getCurrentPosition(
                 (position) => {
                     const lat = position.coords.latitude; const lon = position.coords.longitude;
+                    
+                    // 背景快取 GPS 座標
+                    window.userLat = lat;
+                    window.userLon = lon;
+                    
+                    const originInput = document.getElementById("originInput");
+                    if (originInput) {
+                        originInput.value = "目前位置 (已取得精準定位 ✅)";
+                        originInput.style.color = "#00b894";
+                    }
+
                     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&timezone=auto`;
                     fetch(url).then(res => res.json()).then(data => {
                         const w = data.current_weather; const text = `${w.temperature}°C`;
@@ -2320,7 +2341,14 @@
                     const msg = "定位權限受拒";
                     if(homeWeatherEl) homeWeatherEl.innerText = msg;
                     if(headerWeatherEl) headerWeatherEl.innerText = msg;
-                }
+                    
+                    const originInput = document.getElementById("originInput");
+                    if (originInput) {
+                        originInput.placeholder = "無法取得 GPS，請手動輸入或由地圖偵測";
+                        originInput.style.color = "#d63031";
+                    }
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 } // 啟用高精準度
             );
         } else { if(homeWeatherEl) homeWeatherEl.innerText = "不支援定位"; }
     }
