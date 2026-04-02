@@ -18,3 +18,23 @@
     }
   ]
 }
+{
+  "name": "公車小幫手",
+  "short_name": "公車小幫手",
+  "description": "提供即時公車資訊查詢與座位預測系統",
+  "orientation": "portrait",
+  "id": "/1/",
+  "start_url": "/1/index.html",
+  "icons": [
+    // ...你原本的圖示設定
+  ],
+  "screenshots": [
+    {
+      "src": "你的截圖路徑.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "查詢頁面"
+    }
+  ]
+}
