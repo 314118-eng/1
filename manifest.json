@@ -1,7 +1,7 @@
 {
   "name": "公車小幫手",
   "short_name": "公車小幫手",
-  "start_url": "./index.html",
+  "start_url": "/1/",
   "display": "standalone",
   "background_color": "#f4f7f6",
   "theme_color": "#00b894",
@@ -16,25 +16,10 @@
       "sizes": "512x512",
       "type": "image/png"
     }
-  ]
-}
-{
-  "name": "公車小幫手",
-  "short_name": "公車小幫手",
-  "description": "提供即時公車資訊查詢與座位預測系統",
-  "orientation": "portrait",
-  "id": "/1/",
-  "start_url": "/1/index.html",
-  "icons": [
-    // ...你原本的圖示設定
   ],
-  "screenshots": [
-    {
-      "src": "你的截圖路徑.png",
-      "sizes": "1080x1920",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "查詢頁面"
-    }
-  ]
+  "description": "「座」享其「乘」- 提供最即時的公車動態查詢與座位狀況預測。",
+  "orientation": "portrait",
+  "scope": "/1/",
+  "lang": "zh",
+  "dir": "ltr"
 }
