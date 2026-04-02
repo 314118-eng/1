@@ -2,24 +2,25 @@
   "name": "公車小幫手",
   "short_name": "公車小幫手",
   "start_url": "/1/",
+  "id": "/1/",
   "display": "standalone",
   "background_color": "#f4f7f6",
   "theme_color": "#00b894",
   "icons": [
     {
-      "src": "./icon-192.png",
+      "src": "icon-192.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "./icon-512.png",
+      "src": "icon-512.png",
       "sizes": "512x512",
       "type": "image/png"
     }
   ],
-  "description": "「座」享其「乘」- 提供最即時的公車動態查詢與座位狀況預測。",
+  "description": "「座」享其「乘」 - 提供最即時的公車動態查詢與座位狀況預測。",
   "orientation": "portrait",
   "scope": "/1/",
-  "lang": "zh",
+  "lang": "zh-Hant",
   "dir": "ltr"
 }
